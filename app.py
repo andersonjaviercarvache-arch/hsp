@@ -21,7 +21,7 @@ st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="w
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown("---")
 
-# 2. PARÁMETROS
+# 2. PARÁMETROS EN PANTALLA PRINCIPAL
 with st.container():
     col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
@@ -36,7 +36,7 @@ with st.container():
     with col_input5:
         atenuacion_anual = st.number_input("📉 Atenuación Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
-# 3. LÓGICA TÉCNICA
+# 3. LÓGICA TÉCNICA Y FINANCIERA
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
@@ -46,7 +46,7 @@ costo_planta_total = pot_sug * 825.0
 ahorro_tributario_anual = costo_planta_total / 10
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
-# 4. CÁLCULO DE TABLA CON ÍNDICE NEGATIVO
+# 4. CÁLCULO DEL PAYBACK (AÑOS)
 años_lista = list(range(1, 26))
 data_tabla = []
 suma_fin = 0
@@ -58,8 +58,8 @@ for i in años_lista:
     else:
         rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1))
     
-    # Índice de degradación negativo en formato decimal (según imagen)
-    indice_negativo = rendimiento_pct - 1
+    # Cambio solicitado: Índice de degradación negativo
+    indice_degradacion = (rendimiento_pct - 1) * 100 
     
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
@@ -72,7 +72,7 @@ for i in años_lista:
 
     data_tabla.append({
         "Año": i,
-        "Índice de Degradación": f"{indice_negativo:.3f}", # Formato decimal como en la foto
+        "Índice de Degradación": f"{indice_degradacion:.2f}%", # Nombre y signo ajustado
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
@@ -80,10 +80,45 @@ for i in años_lista:
         "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 5. VISUALIZACIÓN
-st.subheader("📊 Resultados Proyectados")
-df_proyeccion = pd.DataFrame(data_tabla)
-st.dataframe(df_proyeccion, use_container_width=True, height=500)
+# 5. DASHBOARD DE RESULTADOS (Se mantiene igual)
+st.subheader("📊 Resumen Económico del Proyecto")
+col_res1, col_res2, col_res3, col_res4 = st.columns(4)
+
+col_res1.metric("Inversión Total", f"${costo_planta_total:,.2f}")
+col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
+col_res3.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
 
 if año_payback:
-    st.info(f"El retorno de inversión se alcanza en el **Año {año_payback}**.")
+    col_res4.metric("Payback (Retorno)", f"{año_payback} años")
+else:
+    col_res4.metric("Payback (Retorno)", "> 25 años")
+
+st.markdown("---")
+
+# 6. GRÁFICO Y TABLA
+col_grafico, col_tabla = st.columns([1, 1.4])
+
+with col_grafico:
+    st.subheader("Tiempo de Recuperación de Capital")
+    acumulado_vals = [float(d['Acumulado'].replace('$', '').replace(',', '')) for d in data_tabla]
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.plot(años_lista, acumulado_vals, color="#1f77b4", marker="o", label="Flujo Acumulado")
+    ax.axhline(costo_planta_total, color='red', linestyle='--', label=f'Inversión (${costo_planta_total:,.0f})')
+    
+    if año_payback:
+        ax.axvline(año_payback, color='green', linestyle=':', label=f'Retorno: Año {año_payback}')
+        ax.scatter(año_payback, costo_planta_total, color='green', s=100, zorder=5)
+
+    ax.set_xlabel("Años")
+    ax.set_ylabel("Dólares ($)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
+
+with col_tabla:
+    st.subheader("Proyección de Flujo de Caja")
+    df_proyeccion = pd.DataFrame(data_tabla)
+    st.dataframe(df_proyeccion, height=480, use_container_width=True)
+
+st.success(f"✅ Tabla actualizada: Se muestra el **Índice de Degradación** como valor negativo para representar la pérdida de eficiencia.")
+
