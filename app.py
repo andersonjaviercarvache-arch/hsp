@@ -34,41 +34,60 @@ with st.container():
 
 # 3. LÓGICA TÉCNICA
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
+# Rendimiento ajustado por temperatura
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 
-# Potencia necesaria para cubrir el 100% del consumo
-potencia_sugerida = consumo_mensual / (hsp_promedio * pr_ajustado * 30.44)
-gen_anual_inicial = potencia_sugerida * hsp_promedio * pr_ajustado * 365
+# Potencia necesaria
+pot_sug = consumo_mensual / (hsp_promedio * pr_ajustado * 30.44)
+gen_anual_inicial = pot_sug * hsp_promedio * pr_ajustado * 365
 
 # 4. DASHBOARD DE RESULTADOS
 st.subheader("📊 Resumen de Inversión y Generación")
 col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 
-col_res1.metric("Potencia a Instalar", f"{potencia_sugerida:.2f} kWp")
-col_res2.metric("Paneles (550W)", f"{int((potencia_sugerida*1000)/550)+1} ud")
-col_res3.metric("Ahorro Año 1", f"${gen_anual_inicial * costo_kwh:.2f}")
+# Cálculos acumulados para KPI
+años_lista = list(range(1, 26))
+prod_anual = [gen_anual_inicial * (0.995**(i-1)) for i in años_lista]
+ahorro_anual_lista = [p * costo_kwh for p in prod_anual]
+total_ahorro_25 = sum(ahorro_anual_lista)
 
-# Cálculo del ahorro acumulado a 25 años con degradación del 0.5% anual
-ahorro_acumulado_25 = 0
-for i in range(25):
-    ahorro_acumulado_25 += (gen_anual_inicial * (0.995**i)) * costo_kwh
-
-col_res4.metric("Ahorro Total (25 años)", f"${ahorro_acumulado_25:,.2f}")
+col_res1.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
+col_res2.metric("Paneles (550W)", f"{int((pot_sug*1000)/550)+1} ud")
+col_res3.metric("Ahorro Año 1", f"${ahorro_anual_lista[0]:.2f}")
+col_res4.metric("Ahorro Total (25 años)", f"${total_ahorro_25:,.2f}")
 
 st.markdown("---")
 
-# 5. TABLA ANUALIZADA Y GRÁFICO DE AHORRO
+# 5. GRÁFICO Y TABLA
 col_grafico, col_tabla = st.columns([1, 1])
 
-# Crear DataFrame para la tabla de 25 años
-años = list(range(1, 26))
-produccion_anual = [gen_anual_inicial * (0.995**(i-1)) for i in años]
-ahorro_anual = [p * costo_kwh for p in produccion_anual]
-ahorro_total_acumulado = [sum(ahorro_anual[:i]) for i in años]
+# DataFrame de proyección
+acumulado = []
+suma = 0
+for a in ahorro_anual_lista:
+    suma += a
+    acumulado.append(suma)
 
-df_25_años = pd.DataFrame({
-    "Año": años,
-    "Producción (kWh/año)": [f"{p:,.2f}" for p in produccion_anual],
-    "Ahorro Anual (USD)": [f"$ {a:,.2f}" for a in ahorro_anual],
-    "Ahorro Acumulado
+df_proyeccion = pd.DataFrame({
+    "Año": años_lista,
+    "Producción (kWh/año)": [f"{p:,.2f}" for p in prod_anual],
+    "Ahorro Anual (USD)": [f"$ {a:,.2f}" for a in ahorro_anual_lista],
+    "Ahorro Acumulado (USD)": [f"$ {ac:,.2f}" for ac in acumulado]
+})
+
+with col_grafico:
+    st.subheader("Crecimiento del Ahorro Acumulado")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.fill_between(años_lista, acumulado, color="skyblue", alpha=0.4)
+    ax.plot(años_lista, acumulado, color="dodgerblue", marker="o", linewidth=2)
+    ax.set_xlabel("Años de operación")
+    ax.set_ylabel("Dólares Ahorrados ($)")
+    ax.grid(True, linestyle='--', alpha=0.6)
+    st.pyplot(fig)
+
+with col_tabla:
+    st.subheader("Proyección Financiera (Vida Útil)")
+    st.dataframe(df_proyeccion, height=450, use_container_width=True)
+
+st.info(f"💡 El sistema proyecta una degradación del **0.5% anual** en los paneles. En **{ciudad_sel}**, el rendimiento se ve optimizado por un PR de **{pr_ajustado:.1%}**.")
