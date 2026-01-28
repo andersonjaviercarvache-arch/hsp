@@ -21,7 +21,7 @@ st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="w
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown("---")
 
-# 2. PARÁMETROS EN PANTALLA PRINCIPAL
+# 2. PARÁMETROS
 with st.container():
     col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
@@ -32,37 +32,35 @@ with st.container():
     with col_input3:
         costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
     with col_input4:
-        # Nuevo campo para degradación del Año 1
         deg_año1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0, format="%.2f", step=0.1) / 100
     with col_input5:
-        # Nuevo campo para atenuación anual desde el Año 2
         atenuacion_anual = st.number_input("📉 Atenuación Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
-# 3. LÓGICA TÉCNICA Y FINANCIERA
+# 3. LÓGICA TÉCNICA
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 
-# Potencia y Costos
 pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
 costo_planta_total = pot_sug * 825.0
 ahorro_tributario_anual = costo_planta_total / 10
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
-# 4. CÁLCULO DEL PAYBACK (AÑOS)
+# 4. CÁLCULO DE TABLA CON ÍNDICE NEGATIVO
 años_lista = list(range(1, 26))
 data_tabla = []
 suma_fin = 0
 año_payback = None
 
 for i in años_lista:
-    # Lógica de Degradación Diferencial
     if i == 1:
         rendimiento_pct = (1 - deg_año1)
     else:
         rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1))
     
-    porcentaje_degradacion = (1 - rendimiento_pct) * 100
+    # Índice de degradación negativo en formato decimal (según imagen)
+    indice_negativo = rendimiento_pct - 1
+    
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
     beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
@@ -74,7 +72,7 @@ for i in años_lista:
 
     data_tabla.append({
         "Año": i,
-        "Degradación (%)": f"{porcentaje_degradacion:.2f}%",
+        "Índice de Degradación": f"{indice_negativo:.3f}", # Formato decimal como en la foto
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
@@ -82,44 +80,10 @@ for i in años_lista:
         "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 5. DASHBOARD DE RESULTADOS
-st.subheader("📊 Resumen Económico del Proyecto")
-col_res1, col_res2, col_res3, col_res4 = st.columns(4)
-
-col_res1.metric("Inversión Total", f"${costo_planta_total:,.2f}")
-col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
-col_res3.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
+# 5. VISUALIZACIÓN
+st.subheader("📊 Resultados Proyectados")
+df_proyeccion = pd.DataFrame(data_tabla)
+st.dataframe(df_proyeccion, use_container_width=True, height=500)
 
 if año_payback:
-    col_res4.metric("Payback (Retorno)", f"{año_payback} años")
-else:
-    col_res4.metric("Payback (Retorno)", "> 25 años")
-
-st.markdown("---")
-
-# 6. GRÁFICO Y TABLA
-col_grafico, col_tabla = st.columns([1, 1.4])
-
-with col_grafico:
-    st.subheader("Tiempo de Recuperación de Capital")
-    acumulado_vals = [float(d['Acumulado'].replace('$', '').replace(',', '')) for d in data_tabla]
-    fig, ax = plt.subplots(figsize=(10, 7))
-    ax.plot(años_lista, acumulado_vals, color="#1f77b4", marker="o", label="Flujo Acumulado")
-    ax.axhline(costo_planta_total, color='red', linestyle='--', label=f'Inversión (${costo_planta_total:,.0f})')
-    
-    if año_payback:
-        ax.axvline(año_payback, color='green', linestyle=':', label=f'Retorno: Año {año_payback}')
-        ax.scatter(año_payback, costo_planta_total, color='green', s=100, zorder=5)
-
-    ax.set_xlabel("Años")
-    ax.set_ylabel("Dólares ($)")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    st.pyplot(fig)
-
-with col_tabla:
-    st.subheader("Proyección de Flujo de Caja")
-    df_proyeccion = pd.DataFrame(data_tabla)
-    st.dataframe(df_proyeccion, height=480, use_container_width=True)
-
-st.success(f"💡 **Conclusión:** Se ha aplicado una degradación inicial del {deg_año1*100}% y una atenuación anual del {atenuacion_anual*100}% desde el segundo año.")
+    st.info(f"El retorno de inversión se alcanza en el **Año {año_payback}**.")
