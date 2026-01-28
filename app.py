@@ -16,7 +16,7 @@ ciudades_data = {
     "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
 }
 
-st.set_page_config(page_title="HSP Ecuador - Payback Solar", layout="wide")
+st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="wide")
 
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown("---")
@@ -60,7 +60,6 @@ for i in años_lista:
     total_anual = ahorro_en + beneficio_trib
     suma_fin += total_anual
     
-    # Lógica para detectar el año de retorno
     if suma_fin >= costo_planta_total and año_payback is None:
         año_payback = i
 
@@ -71,8 +70,7 @@ for i in años_lista:
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
         "Ahorro Total Año": f"${total_anual:,.2f}",
-        "Acumulado": f"${suma_fin:,.2f}",
-        "Estatus": "✅ Recuperado" if suma_fin >= costo_planta_total else "❌ Pendiente"
+        "Acumulado": f"${suma_fin:,.2f}"
     })
 
 # 5. DASHBOARD DE RESULTADOS
@@ -84,9 +82,9 @@ col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
 col_res3.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
 
 if año_payback:
-    col_res4.metric("Retorno de Inversión (ROI)", f"{año_payback} años", delta="Punto de Equilibrio", delta_color="normal")
+    col_res4.metric("Payback (Retorno)", f"{año_payback} años")
 else:
-    col_res4.metric("Retorno de Inversión (ROI)", "N/A", delta="Más de 25 años", delta_color="inverse")
+    col_res4.metric("Payback (Retorno)", "> 25 años")
 
 st.markdown("---")
 
@@ -106,7 +104,6 @@ with col_grafico:
 
     ax.set_xlabel("Años")
     ax.set_ylabel("Dólares ($)")
-    ax.set_title("Punto de Equilibrio Financiero")
     ax.legend()
     ax.grid(True, alpha=0.3)
     st.pyplot(fig)
@@ -116,4 +113,4 @@ with col_tabla:
     df_proyeccion = pd.DataFrame(data_tabla)
     st.dataframe(df_proyeccion, height=480, use_container_width=True)
 
-st.success(f"💡 **Conclusión:** El sistema se paga por sí solo en el **año {año_payback}**. A partir de ese momento, toda la generación es ahorro neto para el cliente.")
+st.success(f"💡 **Conclusión:** Basado en los parámetros ingresados, el retorno de inversión se estima en el **año {año_payback}**.")
