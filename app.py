@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Base de Datos Técnica Real (HSP y Temperatura)
+# 1. Base de Datos Técnica
 ciudades_data = {
     "Mes": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
     "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
@@ -18,98 +18,88 @@ ciudades_data = {
 
 st.set_page_config(page_title="Solar Pro - Ecuador", layout="wide")
 
-st.title("☀️ Sistema Solar Fotovoltaico: Técnico y Financiero")
-st.markdown("---")
+st.title("☀️ Sistema Solar Fotovoltaico: Análisis Técnico y Financiero")
 
-# 2. PARÁMETROS DE ENTRADA (Pantalla Principal)
+# 2. PARÁMETROS DE ENTRADA
 with st.container():
-    col_input1, col_input2, col_input3, col_input4 = st.columns(4)
-    with col_input1:
-        lista_ciudades = [c for c in ciudades_data.keys() if c != "Mes"]
-        ciudad_sel = st.selectbox("📍 Ciudad", lista_ciudades)
-    with col_input2:
+    col_in1, col_in2, col_in3, col_in4 = st.columns(4)
+    with col_in1:
+        ciudad_sel = st.selectbox("📍 Ciudad", [c for c in ciudades_data.keys() if c != "Mes"])
+    with col_in2:
         consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=300.0, step=10.0, min_value=1.0)
-    with col_input3:
+    with col_in3:
         costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
-    with col_input4:
+    with col_in4:
         deg_anual = st.number_input("📉 Degradación Anual (%)", value=0.50, format="%.2f", step=0.05) / 100
 
-# 3. LÓGICA TÉCNICA Y METEOROLÓGICA
+# 3. PROCESAMIENTO TÉCNICO
 datos_met = ciudades_data[ciudad_sel]
-temp_ciudad = datos_met["temp"]
-hsp_mensuales = datos_met["hsp"]
-hsp_promedio_base = sum(hsp_mensuales) / 12
+hsp_mes = datos_met["hsp"]
+hsp_prom_base = sum(hsp_mes) / 12
+temp_c = datos_met["temp"]
+pr_ajustado = 0.82 - ((max(0, temp_c - 15)) * 0.0045)
 
-# Performance Ratio dinámico por temperatura
-pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
-
-# Dimensionamiento
-pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
+# Financiero
+pot_sug = consumo_mensual / (hsp_prom_base * pr_ajustado * 30.44)
 costo_planta = pot_sug * 825.0
 ahorro_trib_anual = costo_planta / 10
-gen_anual_ini = pot_sug * hsp_promedio_base * pr_ajustado * 365
+gen_anual_ini = pot_sug * hsp_prom_base * pr_ajustado * 365
 
-# 4. DASHBOARD DE DATOS METEOROLÓGICOS Y KPIs
-st.subheader(f"📊 Información Meteorológica y Técnica: {ciudad_sel}")
-col_met1, col_met2, col_met3, col_met4 = st.columns(4)
-
-col_met1.metric("HSP Promedio", f"{hsp_promedio_base:.2f} h/día")
-col_met2.metric("Temp. Promedio", f"{temp_ciudad} °C")
-col_met3.metric("Eficiencia (PR)", f"{pr_ajustado:.1%}")
-col_met4.metric("Inversión Est.", f"${costo_planta:,.2f}")
-
+# 4. VISIBILIDAD DE DATOS METEOROLÓGICOS (KPIs)
 st.markdown("---")
+st.subheader(f"📊 Datos Meteorológicos y Técnicos: {ciudad_sel}")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("HSP Promedio", f"{hsp_prom_base:.2f} h/día")
+c2.metric("Temperatura", f"{temp_c} °C")
+c3.metric("Potencia Planta", f"{pot_sug:.2f} kWp")
+c4.metric("Costo Planta", f"${costo_planta:,.2f}")
 
-# 5. CÁLCULO FINANCIERO ANUALIZADO (25 AÑOS)
-años = list(range(1, 26))
+# 5. CÁLCULOS ANUALES (25 AÑOS)
 data_tabla = []
-suma_fin = 0
+suma_acum = 0
 año_payback = None
 
-for i in años:
-    factor_deg = (1 - deg_anual)**(i-1)
-    hsp_deg = hsp_promedio_base * factor_deg
-    prod = gen_anual_ini * factor_deg
-    ahorro_en = prod * costo_kwh
-    beneficio_trib = ahorro_trib_anual if i <= 10 else 0
-    total_anual = ahorro_en + beneficio_trib
-    suma_fin += total_anual
+for i in range(1, 26):
+    f_deg = (1 - deg_anual)**(i-1)
+    prod = gen_anual_ini * f_deg
+    ah_en = prod * costo_kwh
+    ah_tr = ahorro_trib_anual if i <= 10 else 0
+    total_año = ah_en + ah_tr
+    suma_acum += total_año
     
-    if suma_fin >= costo_planta and año_payback is None:
+    if suma_acum >= costo_planta and año_payback is None:
         año_payback = i
 
     data_tabla.append({
         "Año": i,
-        "HSP Prom.": f"{hsp_deg:.2f}",
+        "HSP Prom.": f"{(hsp_prom_base * f_deg):.2f}",
         "Prod. (kWh/año)": f"{prod:,.0f}",
-        "Ahorro Energía": f"${ahorro_en:,.2f}",
-        "Ahorro Trib.": f"${beneficio_trib:,.2f}",
-        "Ahorro Total Año": f"${total_anual:,.2f}",
-        "Acumulado": f"${suma_fin:,.2f}",
-        "ROI (%)": f"{(suma_fin/costo_planta)*100:.1f}%"
+        "Ahorro Energía": f"${ah_en:,.2f}",
+        "Ahorro Trib.": f"${ah_tr:,.2f}",
+        "Ahorro Total Año": f"${total_año:,.2f}",
+        "Acumulado": f"${suma_acum:,.2f}"
     })
 
 # 6. GRÁFICOS Y TABLA
 col_graf, col_tab = st.columns([1, 1.4])
 
 with col_graf:
-    st.subheader("Análisis de Radiación y Payback")
-    # Gráfico de HSP Mensuales (Datos Meteorológicos)
-    fig, ax1 = plt.subplots(figsize=(10, 6))
-    ax1.bar(ciudades_data["Mes"], hsp_mensuales, color="orange", alpha=0.6, label="HSP Mensual")
-    ax1.set_ylabel("Horas Solar Pico (HSP)")
-    ax1.set_ylim(0, 7)
-    
-    # Línea de Payback en el mismo gráfico o secundario
-    ax2 = ax1.twinx()
-    acum_vals = [float(d['Acumulado'].replace('$', '').replace(',', '')) for d in data_tabla]
-    ax2.plot(range(12), acum_vals[:12], color="blue", marker="o", label="Ahorro Acum. (Año 1)")
-    ax2.set_ylabel("Ahorro USD (Primer Año)")
-    
-    ax1.legend(loc="upper left")
+    st.subheader("Radiación Mensual (HSP)")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(ciudades_data["Mes"], hsp_mes, color="gold", edgecolor="orange")
+    ax.set_ylabel("HSP (kWh/m²/día)")
+    ax.set_title(f"Distribución de Radiación en {ciudad_sel}")
     st.pyplot(fig)
     
     if año_payback:
-        st.success(f"⏱️ **Retorno de Inversión:** {año_payback} años.")
+        st.success(f"⏱️ **Retorno de Inversión (Payback):** {año_payback} años")
 
 with col_tab:
+    st.subheader("Proyección Financiera Detallada")
+    df_proy = pd.DataFrame(data_tabla)
+    st.dataframe(df_proy, height=450, use_container_width=True)
+
+# 7. TABLA METEOROLÓGICA MANUAL
+st.markdown("---")
+with st.expander("📂 Ver Tabla de Radiación Mensual"):
+    st.table(pd.DataFrame({"Mes": ciudades_data["Mes"], "HSP": hsp_mes}).T)
