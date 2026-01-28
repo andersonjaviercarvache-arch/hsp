@@ -16,85 +16,62 @@ ciudades_data = {
     "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
 }
 
-st.set_page_config(page_title="HSP Ecuador - Análisis Económico", layout="wide")
+st.set_page_config(page_title="HSP Ecuador - Calculadora Manual", layout="wide")
 
-# Estilo personalizado para el título
-st.title("☀️ Calculadora Solar de Ecuador: Técnica y Económica")
+st.title("☀️ Calculadora Solar Fotovoltaica Ecuador")
 st.markdown("---")
 
-# 2. Sidebar de Configuración
-st.sidebar.header("⚙️ Configuración del Sistema")
+# 2. Sidebar con Ingreso Manual
+st.sidebar.header("⚙️ Configuración Técnica")
 lista_ciudades = [c for c in ciudades_data.keys() if c != "Mes"]
 ciudad_sel = st.sidebar.selectbox("Seleccione la Ciudad", lista_ciudades)
+potencia_kwp = st.sidebar.number_input("Potencia Instalada (kWp)", value=5.0, step=0.1, min_value=0.0)
 
-potencia_kwp = st.sidebar.number_input("Potencia Instalada (kWp)", value=5.0, step=0.5, min_value=0.1)
+st.sidebar.header("💰 Datos Económicos")
+# CAMBIO: Entrada manual de texto numérico para el costo del kWh
+costo_kwh = st.sidebar.number_input("Costo del kWh (USD)", value=0.092, format="%.4f", step=0.001)
 
-st.sidebar.header("💰 Parámetros Económicos")
-costo_kwh = st.sidebar.slider("Costo del kWh (USD)", 0.04, 0.20, 0.09, step=0.01, 
-                             help="Promedio en Ecuador: $0.09 - $0.10 para residencial.")
-
-# 3. Lógica de Rendimiento (PR Dinámico por Temperatura)
+# 3. Cálculo de Rendimiento Dinámico (PR)
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
-# El PR base 0.82 disminuye si la temperatura supera los 15°C (ajuste por clima de Ecuador)
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 
-# 4. Cálculos de Generación
+# 4. Cálculos de Energía y Ahorro
 hsp_lista = ciudades_data[ciudad_sel]["hsp"]
 hsp_promedio = sum(hsp_lista) / len(hsp_lista)
 
 gen_diaria = potencia_kwp * hsp_promedio * pr_ajustado
-gen_mensual = gen_diaria * 30.44  # Promedio de días al mes
+gen_mensual = gen_diaria * 30.44
 ahorro_mensual = gen_mensual * costo_kwh
 ahorro_anual = ahorro_mensual * 12
 
-# 5. Visualización de Resultados (KPIs)
-col1, col2, col3, col4 = st.columns(4)
-
+# 5. Dashboard de Resultados
+col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("HSP Diarias", f"{hsp_promedio:.2f} h")
+    st.metric("Generación Mensual", f"{gen_mensual:.2f} kWh")
 with col2:
-    st.metric("Gen. Mensual Est.", f"{gen_mensual:.2f} kWh")
+    st.metric("Ahorro Mensual", f"${ahorro_mensual:.2f}")
 with col3:
-    st.metric("PR (Rendimiento)", f"{pr_ajustado:.1%}")
-with col4:
-    st.subheader(f"💵 Ahorro: ${ahorro_mensual:.2f}/mes")
+    st.metric("Rendimiento (PR)", f"{pr_ajustado:.1%}")
 
-st.markdown("---")
+# Resumen de largo plazo
+st.success(f"📈 **Proyección Económica:** Con un costo de ${costo_kwh:.4f}/kWh, el ahorro estimado a 10 años es de **${ahorro_anual * 10:,.2f}**")
 
-# 6. Gráficos y Tablas
-col_izq, col_der = st.columns([2, 1])
+# 6. Gráfico de Generación Real
+st.subheader(f"Producción Energética Mensual Estimada en {ciudad_sel}")
+gen_mes_a_mes = [potencia_kwp * h * pr_ajustado * 30.44 for h in hsp_lista]
 
-with col_izq:
-    st.subheader(f"Producción Energética Mensual en {ciudad_sel}")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    
-    # Cálculo de generación mes a mes para el gráfico
-    gen_mes_a_mes = [potencia_kwp * h * pr_ajustado * 30.44 for h in hsp_lista]
-    
-    ax.bar(ciudades_data["Mes"], gen_mes_a_mes, color="#2ecc71", edgecolor="black")
-    ax.set_ylabel("Generación Estimada (kWh/mes)")
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    st.pyplot(fig)
+fig, ax = plt.subplots(figsize=(10, 3.5))
+ax.bar(ciudades_data["Mes"], gen_mes_a_mes, color="#3498db", edgecolor="black")
+ax.set_ylabel("kWh/mes")
+ax.grid(axis='y', linestyle='--', alpha=0.5)
+st.pyplot(fig)
 
-with col_der:
-    st.subheader("Resumen Económico")
-    st.success(f"""
-    **Estimación Anual:**
-    - Generación: {gen_mensual * 12:.0f} kWh/año
-    - Ahorro Total: ${ahorro_anual:.2f}/año
-    """)
-    
-    st.info(f"""
-    **Datos Climáticos ({ciudad_sel}):**
-    - Temp. Promedio: {temp_ciudad}°C
-    - El calor reduce la eficiencia en un {(0.82-pr_ajustado):.1%}.
-    """)
-
-# 7. Tabla Detallada
-if st.checkbox("Mostrar tabla de datos técnicos mensuales"):
+# 7. Tabla de Comparación
+with st.expander("Ver tabla de valores mensuales"):
     df_detalle = pd.DataFrame({
         "Mes": ciudades_data["Mes"],
-        "HSP (kWh/m²/día)": hsp_lista,
-        "Gen. Estimada (kWh)": [round(g, 2) for g in gen_mes_a_mes]
+        "HSP": hsp_lista,
+        "Generación (kWh)": [round(g, 2) for g in gen_mes_a_mes],
+        "Ahorro (USD)": [round(g * costo_kwh, 2) for g in gen_mes_a_mes]
     })
     st.table(df_detalle)
