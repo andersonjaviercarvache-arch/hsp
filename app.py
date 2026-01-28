@@ -16,9 +16,9 @@ ciudades_data = {
     "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
 }
 
-st.set_page_config(page_title="HSP Ecuador - Proyección 25 Años", layout="wide")
+st.set_page_config(page_title="HSP Ecuador - Análisis Financiero Pro", layout="wide")
 
-st.title("☀️ Análisis Solar y Financiero a Largo Plazo (25 Años)")
+st.title("☀️ Análisis Financiero Solar y Beneficios Tributarios")
 st.markdown("---")
 
 # 2. PARÁMETROS EN PANTALLA PRINCIPAL
@@ -32,63 +32,84 @@ with st.container():
     with col_input3:
         costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
     with col_input4:
-        # CAMBIO: Nuevo campo para degradación anual manual
         degradacion_anual = st.number_input("📉 Degradación Anual (%)", value=0.50, format="%.2f", step=0.05) / 100
 
-# 3. LÓGICA TÉCNICA
+# 3. LÓGICA TÉCNICA Y FINANCIERA
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 
-# Potencia necesaria
+# Potencia necesaria y Costo de Planta
 pot_sug = consumo_mensual / (hsp_promedio * pr_ajustado * 30.44)
+costo_planta_total = pot_sug * 825.0  # Referencia $825 por kWp instalado
+ahorro_tributario_anual = costo_planta_total / 10  # Distribuido en 10 años
 gen_anual_inicial = pot_sug * hsp_promedio * pr_ajustado * 365
 
 # 4. DASHBOARD DE RESULTADOS
-st.subheader("📊 Resumen de Inversión y Generación")
+st.subheader("📊 Resumen Ejecutivo del Proyecto")
 col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 
-# Cálculos acumulados considerando la degradación manual
-años_lista = list(range(1, 26))
-prod_anual = [gen_anual_inicial * ((1 - degradacion_anual)**(i-1)) for i in años_lista]
-ahorro_anual_lista = [p * costo_kwh for p in prod_anual]
-total_ahorro_25 = sum(ahorro_anual_lista)
+col_res1.metric("Inversión Est. (Planta)", f"${costo_planta_total:,.2f}")
+col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
+col_res3.metric("Beneficio Tributario/Año", f"${ahorro_tributario_anual:,.2f}")
 
-col_res1.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
-col_res2.metric("Paneles (550W)", f"{int((pot_sug*1000)/550)+1} ud")
-col_res3.metric("Ahorro Año 1", f"${ahorro_anual_lista[0]:.2f}")
-col_res4.metric("Ahorro Total (25 años)", f"${total_ahorro_25:,.2f}")
+# Cálculo acumulado para el KPI
+años_lista = list(range(1, 26))
+acumulado_lista = []
+suma_acumulada = 0
+
+for i in años_lista:
+    prod = gen_anual_inicial * ((1 - degradacion_anual)**(i-1))
+    ahorro_energia = prod * costo_kwh
+    beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
+    total_anual = ahorro_energia + beneficio_trib
+    suma_acumulada += total_anual
+    acumulado_lista.append(suma_acumulada)
+
+col_res4.metric("Retorno Total (25 años)", f"${suma_acumulada:,.2f}")
 
 st.markdown("---")
 
-# 5. GRÁFICO Y TABLA
-col_grafico, col_tabla = st.columns([1, 1])
+# 5. GRÁFICO Y TABLA FINANCIERA
+col_grafico, col_tabla = st.columns([1, 1.2])
 
-acumulado = []
-suma = 0
-for a in ahorro_anual_lista:
-    suma += a
-    acumulado.append(suma)
+# Datos para la tabla anualizada
+data_tabla = []
+suma_fin = 0
+for i in años_lista:
+    rendimiento_pct = (1 - degradacion_anual)**(i-1)
+    prod = gen_anual_inicial * rendimiento_pct
+    ahorro_en = prod * costo_kwh
+    beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
+    total_anual = ahorro_en + beneficio_trib
+    suma_fin += total_anual
+    
+    data_tabla.append({
+        "Año": i,
+        "Degradación (%)": f"{(1-rendimiento_pct)*100:.2f}%",
+        "Costo kWh (USD)": f"${costo_kwh:.4f}",
+        "Prod. (kWh/año)": f"{prod:,.0f}",
+        "Ahorro Energía": f"${ahorro_en:,.2f}",
+        "Ahorro Tributario": f"${beneficio_trib:,.2f}",
+        "Ahorro Total Año": f"${total_anual:,.2f}",
+        "Acumulado": f"${suma_fin:,.2f}"
+    })
 
-df_proyeccion = pd.DataFrame({
-    "Año": años_lista,
-    "Producción (kWh/año)": [f"{p:,.2f}" for p in prod_anual],
-    "Ahorro Anual (USD)": [f"$ {a:,.2f}" for a in ahorro_anual_lista],
-    "Ahorro Acumulado (USD)": [f"$ {ac:,.2f}" for ac in acumulado]
-})
+df_proyeccion = pd.DataFrame(data_tabla)
 
 with col_grafico:
-    st.subheader("Crecimiento del Ahorro Acumulado")
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.fill_between(años_lista, acumulado, color="#f1c40f", alpha=0.3)
-    ax.plot(años_lista, acumulado, color="#f39c12", marker="o", linewidth=2)
-    ax.set_xlabel("Años de operación")
-    ax.set_ylabel("Dólares Ahorrados ($)")
-    ax.grid(True, linestyle='--', alpha=0.6)
+    st.subheader("Curva de Retorno de Inversión")
+    fig, ax = plt.subplots(figsize=(10, 6.5))
+    ax.fill_between(años_lista, acumulado_lista, color="#2ecc71", alpha=0.3)
+    ax.plot(años_lista, acumulado_lista, color="#27ae60", marker="o", linewidth=2)
+    ax.axhline(costo_planta_total, color='red', linestyle='--', label='Punto de Equilibrio (CAPEX)')
+    ax.set_xlabel("Años")
+    ax.set_ylabel("Beneficio Económico Acumulado ($)")
+    ax.legend()
     st.pyplot(fig)
 
 with col_tabla:
-    st.subheader("Proyección Financiera (Vida Útil)")
-    st.dataframe(df_proyeccion, height=450, use_container_width=True)
+    st.subheader("Proyección Financiera Detallada")
+    st.dataframe(df_proyeccion, height=480, use_container_width=True)
 
-st.info(f"💡 El sistema aplica una degradación manual del **{degradacion_anual*100:.2f}% anual**. En **{ciudad_sel}**, el PR es de **{pr_ajustado:.1%}**.")
+st.success(f"✅ **Análisis:** En 10 años, usted habrá recuperado **${ahorro_tributario_anual*10:,.2f}** solo por beneficios tributarios, adicionales al ahorro en su planilla eléctrica.")
