@@ -58,8 +58,8 @@ for i in años_lista:
     else:
         rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1))
     
-    # Cambio solicitado: Índice de degradación negativo
-    indice_degradacion = (rendimiento_pct - 1) * 100 
+    # Índice de degradación negativo (ej. -0.980, -0.975...)
+    indice_degradacion = -rendimiento_pct 
     
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
@@ -72,7 +72,7 @@ for i in años_lista:
 
     data_tabla.append({
         "Año": i,
-        "Índice de Degradación": f"{indice_degradacion:.2f}%", # Nombre y signo ajustado
+        "Índice de Degradación": f"{indice_degradacion:.3f}", 
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
@@ -80,7 +80,7 @@ for i in años_lista:
         "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 5. DASHBOARD DE RESULTADOS (Se mantiene igual)
+# 5. DASHBOARD DE RESULTADOS
 st.subheader("📊 Resumen Económico del Proyecto")
 col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 
@@ -120,5 +120,4 @@ with col_tabla:
     df_proyeccion = pd.DataFrame(data_tabla)
     st.dataframe(df_proyeccion, height=480, use_container_width=True)
 
-st.success(f"✅ Tabla actualizada: Se muestra el **Índice de Degradación** como valor negativo para representar la pérdida de eficiencia.")
-
+st.success(f"✅ Análisis completado para {ciudad_sel}. El índice de degradación inicia en {- (1-deg_año1):.3f} y refleja el rendimiento acumulado negativo.")
