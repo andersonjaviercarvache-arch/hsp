@@ -16,9 +16,9 @@ ciudades_data = {
     "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
 }
 
-st.set_page_config(page_title="HSP Ecuador - Retorno de Capital", layout="wide")
+st.set_page_config(page_title="HSP Ecuador - Payback Solar", layout="wide")
 
-st.title("☀️ Análisis Financiero Solar y Retorno de Capital")
+st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown("---")
 
 # 2. PARÁMETROS EN PANTALLA PRINCIPAL
@@ -39,78 +39,81 @@ temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 
-# Potencia y Costo de Planta
+# Potencia y Costos
 pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
 costo_planta_total = pot_sug * 825.0
 ahorro_tributario_anual = costo_planta_total / 10
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
-# 4. DASHBOARD DE RESULTADOS
-st.subheader("📊 Resumen Ejecutivo del Proyecto")
-col_res1, col_res2, col_res3, col_res4 = st.columns(4)
-
-# Cálculo acumulado final para KPI
+# 4. CÁLCULO DEL PAYBACK (AÑOS)
 años_lista = list(range(1, 26))
-suma_acumulada = 0
-for i in años_lista:
-    prod = gen_anual_inicial * ((1 - degradacion_anual)**(i-1))
-    ahorro_en = prod * costo_kwh
-    beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
-    suma_acumulada += (ahorro_en + beneficio_trib)
-
-roi_total = (suma_acumulada / costo_planta_total) * 100 if costo_planta_total > 0 else 0
-
-col_res1.metric("Inversión Planta", f"${costo_planta_total:,.2f}")
-col_res2.metric("Potencia Recomendada", f"{pot_sug:.2f} kWp")
-col_res3.metric("Ahorro Total (25 años)", f"${suma_acumulada:,.2f}")
-col_res4.metric("Retorno de Capital (ROI)", f"{roi_total:.1f}%")
-
-st.markdown("---")
-
-# 5. GRÁFICO Y TABLA FINANCIERA
-col_grafico, col_tabla = st.columns([1, 1.4])
-
 data_tabla = []
 suma_fin = 0
+año_payback = None
+
 for i in años_lista:
     rendimiento_pct = (1 - degradacion_anual)**(i-1)
-    # HSP efectivas considerando degradación del sistema
     hsp_año = hsp_promedio_base * rendimiento_pct
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
     beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
     total_anual = ahorro_en + beneficio_trib
     suma_fin += total_anual
-    retorno_cap_acum = (suma_fin / costo_planta_total) * 100
     
+    # Lógica para detectar el año de retorno
+    if suma_fin >= costo_planta_total and año_payback is None:
+        año_payback = i
+
     data_tabla.append({
         "Año": i,
         "HSP Prom.": f"{hsp_año:.2f}",
-        "Degradación": f"{(1-rendimiento_pct)*100:.1f}%",
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
         "Ahorro Total Año": f"${total_anual:,.2f}",
         "Acumulado": f"${suma_fin:,.2f}",
-        "Retorno Cap.": f"{retorno_cap_acum:.1f}%"
+        "Estatus": "✅ Recuperado" if suma_fin >= costo_planta_total else "❌ Pendiente"
     })
 
-df_proyeccion = pd.DataFrame(data_tabla)
+# 5. DASHBOARD DE RESULTADOS
+st.subheader("📊 Resumen Económico del Proyecto")
+col_res1, col_res2, col_res3, col_res4 = st.columns(4)
+
+col_res1.metric("Inversión Total", f"${costo_planta_total:,.2f}")
+col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
+col_res3.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
+
+if año_payback:
+    col_res4.metric("Retorno de Inversión (ROI)", f"{año_payback} años", delta="Punto de Equilibrio", delta_color="normal")
+else:
+    col_res4.metric("Retorno de Inversión (ROI)", "N/A", delta="Más de 25 años", delta_color="inverse")
+
+st.markdown("---")
+
+# 6. GRÁFICO Y TABLA
+col_grafico, col_tabla = st.columns([1, 1.4])
 
 with col_grafico:
-    st.subheader("Evolución del Retorno (%)")
+    st.subheader("Tiempo de Recuperación de Capital")
+    acumulado_vals = [float(d['Acumulado'].replace('$', '').replace(',', '')) for d in data_tabla]
     fig, ax = plt.subplots(figsize=(10, 7))
-    retornos_y = [(float(d['Retorno Cap.'].replace('%',''))) for d in data_tabla]
-    ax.plot(años_lista, retornos_y, color="#e67e22", marker="o", linewidth=2, label="% Retorno")
-    ax.axhline(100, color='red', linestyle='--', label='100% (Punto de Equilibrio)')
+    ax.plot(años_lista, acumulado_vals, color="#1f77b4", marker="o", label="Flujo Acumulado")
+    ax.axhline(costo_planta_total, color='red', linestyle='--', label=f'Inversión (${costo_planta_total:,.0f})')
+    
+    if año_payback:
+        ax.axvline(año_payback, color='green', linestyle=':', label=f'Retorno: Año {año_payback}')
+        ax.scatter(año_payback, costo_planta_total, color='green', s=100, zorder=5)
+
     ax.set_xlabel("Años")
-    ax.set_ylabel("Porcentaje de Capital Recuperado (%)")
-    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.set_ylabel("Dólares ($)")
+    ax.set_title("Punto de Equilibrio Financiero")
     ax.legend()
+    ax.grid(True, alpha=0.3)
     st.pyplot(fig)
 
 with col_tabla:
-    st.subheader("Proyección Técnica y Financiera Detallada")
+    st.subheader("Proyección de Flujo de Caja")
+    df_proyeccion = pd.DataFrame(data_tabla)
     st.dataframe(df_proyeccion, height=480, use_container_width=True)
 
-st.info(f"💡 **Análisis:** Con una inversión de **${costo_planta_total:,.2f}**, usted recupera el 100% de su capital y genera una utilidad adicional del **{roi_total-100:.1f}%** al finalizar la vida útil.")
+st.success(f"💡 **Conclusión:** El sistema se paga por sí solo en el **año {año_payback}**. A partir de ese momento, toda la generación es ahorro neto para el cliente.")
