@@ -23,18 +23,20 @@ st.markdown("---")
 
 # 2. PARÁMETROS EN PANTALLA PRINCIPAL
 with st.container():
-    col_input1, col_input2, col_input3 = st.columns(3)
+    col_input1, col_input2, col_input3, col_input4 = st.columns(4)
     with col_input1:
         lista_ciudades = [c for c in ciudades_data.keys() if c != "Mes"]
-        ciudad_sel = st.selectbox("📍 Ciudad del Proyecto", lista_ciudades)
+        ciudad_sel = st.selectbox("📍 Ciudad", lista_ciudades)
     with col_input2:
-        consumo_mensual = st.number_input("⚡ Consumo Mensual (kWh/mes)", value=300.0, step=10.0, min_value=1.0)
+        consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=300.0, step=10.0, min_value=1.0)
     with col_input3:
         costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
+    with col_input4:
+        # CAMBIO: Nuevo campo para degradación anual manual
+        degradacion_anual = st.number_input("📉 Degradación Anual (%)", value=0.50, format="%.2f", step=0.05) / 100
 
 # 3. LÓGICA TÉCNICA
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
-# Rendimiento ajustado por temperatura
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 
@@ -46,9 +48,9 @@ gen_anual_inicial = pot_sug * hsp_promedio * pr_ajustado * 365
 st.subheader("📊 Resumen de Inversión y Generación")
 col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 
-# Cálculos acumulados para KPI
+# Cálculos acumulados considerando la degradación manual
 años_lista = list(range(1, 26))
-prod_anual = [gen_anual_inicial * (0.995**(i-1)) for i in años_lista]
+prod_anual = [gen_anual_inicial * ((1 - degradacion_anual)**(i-1)) for i in años_lista]
 ahorro_anual_lista = [p * costo_kwh for p in prod_anual]
 total_ahorro_25 = sum(ahorro_anual_lista)
 
@@ -62,7 +64,6 @@ st.markdown("---")
 # 5. GRÁFICO Y TABLA
 col_grafico, col_tabla = st.columns([1, 1])
 
-# DataFrame de proyección
 acumulado = []
 suma = 0
 for a in ahorro_anual_lista:
@@ -79,8 +80,8 @@ df_proyeccion = pd.DataFrame({
 with col_grafico:
     st.subheader("Crecimiento del Ahorro Acumulado")
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.fill_between(años_lista, acumulado, color="skyblue", alpha=0.4)
-    ax.plot(años_lista, acumulado, color="dodgerblue", marker="o", linewidth=2)
+    ax.fill_between(años_lista, acumulado, color="#f1c40f", alpha=0.3)
+    ax.plot(años_lista, acumulado, color="#f39c12", marker="o", linewidth=2)
     ax.set_xlabel("Años de operación")
     ax.set_ylabel("Dólares Ahorrados ($)")
     ax.grid(True, linestyle='--', alpha=0.6)
@@ -90,4 +91,4 @@ with col_tabla:
     st.subheader("Proyección Financiera (Vida Útil)")
     st.dataframe(df_proyeccion, height=450, use_container_width=True)
 
-st.info(f"💡 El sistema proyecta una degradación del **0.5% anual** en los paneles. En **{ciudad_sel}**, el rendimiento se ve optimizado por un PR de **{pr_ajustado:.1%}**.")
+st.info(f"💡 El sistema aplica una degradación manual del **{degradacion_anual*100:.2f}% anual**. En **{ciudad_sel}**, el PR es de **{pr_ajustado:.1%}**.")
