@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Base de Datos Técnica Real (HSP y Temperatura)
+# 1. Base de Datos Técnica Real
 ciudades_data = {
     "Mes": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
     "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
@@ -16,12 +16,12 @@ ciudades_data = {
     "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
 }
 
-st.set_page_config(page_title="Solar Pro - Ecuador", layout="wide")
+st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="wide")
 
-st.title("☀️ Sistema Solar Fotovoltaico: Técnico y Financiero")
+st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown("---")
 
-# 2. PARÁMETROS DE ENTRADA (Pantalla Principal)
+# 2. PARÁMETROS EN PANTALLA PRINCIPAL
 with st.container():
     col_input1, col_input2, col_input3, col_input4 = st.columns(4)
     with col_input1:
@@ -32,95 +32,85 @@ with st.container():
     with col_input3:
         costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
     with col_input4:
-        deg_anual = st.number_input("📉 Degradación Anual (%)", value=0.50, format="%.2f", step=0.05) / 100
+        degradacion_anual = st.number_input("📉 Degradación Anual (%)", value=0.50, format="%.2f", step=0.05) / 100
 
-# 3. LÓGICA TÉCNICA Y METEOROLÓGICA
-datos_met = ciudades_data[ciudad_sel]
-temp_ciudad = datos_met["temp"]
-hsp_mensuales = datos_met["hsp"]
-hsp_promedio_base = sum(hsp_mensuales) / 12
-
-# Performance Ratio dinámico por temperatura
+# 3. LÓGICA TÉCNICA Y FINANCIERA
+temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
+hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 
-# Dimensionamiento
+# Potencia y Costos
 pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
-costo_planta = pot_sug * 825.0
-ahorro_trib_anual = costo_planta / 10
-gen_anual_ini = pot_sug * hsp_promedio_base * pr_ajustado * 365
+costo_planta_total = pot_sug * 825.0
+ahorro_tributario_anual = costo_planta_total / 10
+gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
-# 4. DASHBOARD DE DATOS METEOROLÓGICOS Y KPIs
-st.subheader(f"📊 Información Meteorológica y Técnica: {ciudad_sel}")
-col_met1, col_met2, col_met3, col_met4 = st.columns(4)
-
-col_met1.metric("HSP Promedio", f"{hsp_promedio_base:.2f} h/día")
-col_met2.metric("Temp. Promedio", f"{temp_ciudad} °C")
-col_met3.metric("Eficiencia (PR)", f"{pr_ajustado:.1%}")
-col_met4.metric("Inversión Est.", f"${costo_planta:,.2f}")
-
-st.markdown("---")
-
-# 5. CÁLCULO FINANCIERO ANUALIZADO (25 AÑOS)
-años = list(range(1, 26))
+# 4. CÁLCULO DEL PAYBACK (AÑOS)
+años_lista = list(range(1, 26))
 data_tabla = []
 suma_fin = 0
 año_payback = None
 
-for i in años:
-    factor_deg = (1 - deg_anual)**(i-1)
-    hsp_deg = hsp_promedio_base * factor_deg
-    prod = gen_anual_ini * factor_deg
+for i in años_lista:
+    rendimiento_pct = (1 - degradacion_anual)**(i-1)
+    hsp_año = hsp_promedio_base * rendimiento_pct
+    prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
-    beneficio_trib = ahorro_trib_anual if i <= 10 else 0
+    beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
     total_anual = ahorro_en + beneficio_trib
     suma_fin += total_anual
     
-    if suma_fin >= costo_planta and año_payback is None:
+    if suma_fin >= costo_planta_total and año_payback is None:
         año_payback = i
 
     data_tabla.append({
         "Año": i,
-        "HSP Prom.": f"{hsp_deg:.2f}",
+        "HSP Prom.": f"{hsp_año:.2f}",
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
         "Ahorro Total Año": f"${total_anual:,.2f}",
-        "Acumulado": f"${suma_fin:,.2f}",
-        "ROI (%)": f"{(suma_fin/costo_planta)*100:.1f}%"
+        "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 6. GRÁFICOS Y TABLA
-col_graf, col_tab = st.columns([1, 1.4])
+# 5. DASHBOARD DE RESULTADOS
+st.subheader("📊 Resumen Económico del Proyecto")
+col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 
-with col_graf:
-    st.subheader("Análisis de Radiación y Payback")
-    # Gráfico de HSP Mensuales (Datos Meteorológicos)
-    fig, ax1 = plt.subplots(figsize=(10, 6))
-    ax1.bar(ciudades_data["Mes"], hsp_mensuales, color="orange", alpha=0.6, label="HSP Mensual")
-    ax1.set_ylabel("Horas Solar Pico (HSP)")
-    ax1.set_ylim(0, 7)
-    
-    # Línea de Payback en el mismo gráfico o secundario
-    ax2 = ax1.twinx()
-    acum_vals = [float(d['Acumulado'].replace('$', '').replace(',', '')) for d in data_tabla]
-    ax2.plot(range(12), acum_vals[:12], color="blue", marker="o", label="Ahorro Acum. (Año 1)")
-    ax2.set_ylabel("Ahorro USD (Primer Año)")
-    
-    ax1.legend(loc="upper left")
-    st.pyplot(fig)
+col_res1.metric("Inversión Total", f"${costo_planta_total:,.2f}")
+col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
+col_res3.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
+
+if año_payback:
+    col_res4.metric("Payback (Retorno)", f"{año_payback} años")
+else:
+    col_res4.metric("Payback (Retorno)", "> 25 años")
+
+st.markdown("---")
+
+# 6. GRÁFICO Y TABLA
+col_grafico, col_tabla = st.columns([1, 1.4])
+
+with col_grafico:
+    st.subheader("Tiempo de Recuperación de Capital")
+    acumulado_vals = [float(d['Acumulado'].replace('$', '').replace(',', '')) for d in data_tabla]
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.plot(años_lista, acumulado_vals, color="#1f77b4", marker="o", label="Flujo Acumulado")
+    ax.axhline(costo_planta_total, color='red', linestyle='--', label=f'Inversión (${costo_planta_total:,.0f})')
     
     if año_payback:
-        st.success(f"⏱️ **Retorno de Inversión:** {año_payback} años.")
+        ax.axvline(año_payback, color='green', linestyle=':', label=f'Retorno: Año {año_payback}')
+        ax.scatter(año_payback, costo_planta_total, color='green', s=100, zorder=5)
 
-with col_tab:
-    st.subheader("Proyección a 25 Años")
-    df_proy = pd.DataFrame(data_tabla)
-    st.dataframe(df_proy, height=450, use_container_width=True)
+    ax.set_xlabel("Años")
+    ax.set_ylabel("Dólares ($)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
 
-# 7. TABLA METEOROLÓGICA MENSUAL (HSP PURAS)
-with st.expander("☁️ Ver Detalle de Radiación Mensual (HSP)"):
-    df_met = pd.DataFrame({
-        "Mes": ciudades_data["Mes"],
-        "HSP (kWh/m²/día)": hsp_mensuales
-    })
-    st.table(df_met.T)
+with col_tabla:
+    st.subheader("Proyección de Flujo de Caja")
+    df_proyeccion = pd.DataFrame(data_tabla)
+    st.dataframe(df_proyeccion, height=480, use_container_width=True)
+
+st.success(f"💡 **Conclusión:** Basado en los parámetros ingresados, el retorno de inversión se estima en el **año {año_payback}**.")
