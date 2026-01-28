@@ -23,7 +23,7 @@ st.markdown("---")
 
 # 2. PARÁMETROS EN PANTALLA PRINCIPAL
 with st.container():
-    col_input1, col_input2, col_input3, col_input4 = st.columns(4)
+    col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
         lista_ciudades = [c for c in ciudades_data.keys() if c != "Mes"]
         ciudad_sel = st.selectbox("📍 Ciudad", lista_ciudades)
@@ -32,7 +32,11 @@ with st.container():
     with col_input3:
         costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
     with col_input4:
-        degradacion_anual = st.number_input("📉 Degradación Anual (%)", value=0.50, format="%.2f", step=0.05) / 100
+        # Nuevo campo para degradación del Año 1
+        deg_año1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0, format="%.2f", step=0.1) / 100
+    with col_input5:
+        # Nuevo campo para atenuación anual desde el Año 2
+        atenuacion_anual = st.number_input("📉 Atenuación Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
 # 3. LÓGICA TÉCNICA Y FINANCIERA
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
@@ -52,8 +56,13 @@ suma_fin = 0
 año_payback = None
 
 for i in años_lista:
-    rendimiento_pct = (1 - degradacion_anual)**(i-1)
-    hsp_año = hsp_promedio_base * rendimiento_pct
+    # Lógica de Degradación Diferencial
+    if i == 1:
+        rendimiento_pct = (1 - deg_año1)
+    else:
+        rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1))
+    
+    porcentaje_degradacion = (1 - rendimiento_pct) * 100
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
     beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
@@ -65,7 +74,7 @@ for i in años_lista:
 
     data_tabla.append({
         "Año": i,
-        "HSP Prom.": f"{hsp_año:.2f}",
+        "Degradación (%)": f"{porcentaje_degradacion:.2f}%",
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
@@ -113,4 +122,4 @@ with col_tabla:
     df_proyeccion = pd.DataFrame(data_tabla)
     st.dataframe(df_proyeccion, height=480, use_container_width=True)
 
-st.success(f"💡 **Conclusión:** Basado en los parámetros ingresados, el retorno de inversión se estima en el **año {año_payback}**.")
+st.success(f"💡 **Conclusión:** Se ha aplicado una degradación inicial del {deg_año1*100}% y una atenuación anual del {atenuacion_anual*100}% desde el segundo año.")
