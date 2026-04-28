@@ -1,6 +1,3 @@
-# ... (código anterior igual)
-
-# Lógica técnica con validación de seguridad
 if ciudad_sel in ciudades_data:
     temp_ciudad = ciudades_data[ciudad_sel]["temp"]
     hsp_lista = ciudades_data[ciudad_sel]["hsp"]
@@ -12,8 +9,6 @@ if ciudad_sel in ciudades_data:
 else:
     st.error("Error: Ciudad no encontrada en la base de datos.")
     st.stop() # Detiene la ejecución para evitar el TypeError
-
-# ... (sigue con el resto del código)
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
