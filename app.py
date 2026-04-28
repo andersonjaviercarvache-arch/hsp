@@ -1,8 +1,11 @@
-# ... tu código previo con cálculos de costo_planta_total, pot_sug, suma_fin, año_payback, data_tabla ...
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+from fpdf import FPDF
+import base64
 
-# 7. GENERAR PDF DESCARGABLE
+# --- Definir función al inicio ---
 def generar_pdf(ciudad, costo_total, potencia, ahorro_total, año_payback, tabla):
-    from fpdf import FPDF
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -28,13 +31,14 @@ def generar_pdf(ciudad, costo_total, potencia, ahorro_total, año_payback, tabla
 
     return pdf
 
-# ⚠️ IMPORTANTE: aquí ya existen las variables calculadas
-pdf_obj = generar_pdf(ciudad_sel, costo_planta_total, pot_sug, suma_fin, año_payback, data_tabla)
+# --- Aquí va todo tu código de inputs y cálculos ---
+# (ciudad_sel, costo_planta_total, pot_sug, suma_fin, año_payback, data_tabla)
 
-# Convertir a base64 para descarga
-import base64
-pdf_bytes = pdf_obj.output(dest="S").encode("latin-1")
-b64 = base64.b64encode(pdf_bytes).decode("latin-1")
-href = f'<a href="data:application/octet-stream;base64,{b64}" download="ROI_Solar_{ciudad_sel}.pdf">📥 Descargar Reporte en PDF</a>'
+# --- Botón para generar PDF ---
+if st.button("📥 Generar Reporte en PDF"):
+    pdf_obj = generar_pdf(ciudad_sel, costo_planta_total, pot_sug, suma_fin, año_payback, data_tabla)
+    pdf_bytes = pdf_obj.output(dest="S").encode("latin-1")
+    b64 = base64.b64encode(pdf_bytes).decode("latin-1")
+    href = f'<a href="data:application/octet-stream;base64,{b64}" download="ROI_Solar_{ciudad_sel}.pdf">📥 Descargar Reporte en PDF</a>'
+    st.markdown(href, unsafe_allow_html=True)
 
-st.markdown(href, unsafe_allow_html=True)
