@@ -19,7 +19,11 @@ ciudades_data = {
 
 st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="wide")
 
-# --- SIDEBAR: DATOS DEL CLIENTE ---
+# --- LÓGICA DE SINCRONIZACIÓN DE PRECIOS ---
+if 'costo_kwp' not in st.session_state:
+    st.session_state.costo_kwp = 825.0
+
+# Sidebar: Datos del Cliente
 st.sidebar.header("📋 Datos de la Propuesta")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Cliente Ejemplo")
 nombre_proyecto = st.sidebar.text_input("Nombre del Proyecto", "Instalación Residencial")
@@ -28,40 +32,65 @@ vendedor = st.sidebar.text_input("Asesor Técnico", "Ing. Solar")
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown("---")
 
-# 2. PARÁMETROS (Se añade Costo por kWp)
-with st.container():
-    col_input1, col_input2, col_input3, col_input4, col_input5, col_input6 = st.columns(6)
-    with col_input1:
-        lista_ciudades = [c for c in ciudades_data.keys() if c != "Mes"]
-        ciudad_sel = st.selectbox("📍 Ciudad", lista_ciudades)
-    with col_input2:
-        consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=300.0, step=10.0, min_value=1.0)
-    with col_input3:
-        costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
-    with col_input4:
-        costo_kwp_instalado = st.number_input("💰 Costo por kWp (USD)", value=825.0, step=10.0) # NUEVO CAMPO
-    with col_input5:
-        deg_año1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0, format="%.2f", step=0.1) / 100
-    with col_input6:
-        atenuacion_anual = st.number_input("📉 Aten. Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
+# 2. PARÁMETROS TÉCNICOS INICIALES
+col_t1, col_t2, col_t3 = st.columns(3)
+with col_t1:
+    lista_ciudades = [c for c in ciudades_data.keys() if c != "Mes"]
+    ciudad_sel = st.selectbox("📍 Ciudad", lista_ciudades)
+with col_t2:
+    consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=300.0, step=10.0)
+with col_t3:
+    costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f")
 
-# 3. LÓGICA TÉCNICA
+# Cálculo de Potencia Sugerida (Necesario para los precios)
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
-
 pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
-costo_planta_total = pot_sug * costo_kwp_instalado # USANDO EL VALOR MODIFICABLE
+
+# --- SECCIÓN DE PRECIOS VINCULADOS ---
+st.subheader("💰 Configuración de Inversión")
+col_p1, col_p2 = st.columns(2)
+
+def update_from_kwp():
+    st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
+
+def update_from_inv():
+    st.session_state.costo_kwp = st.session_state.inv_total / pot_sug
+
+with col_p1:
+    costo_kwp_instalado = st.number_input("Precio por kWp instalado (USD)", 
+                                          key="costo_kwp", 
+                                          on_change=update_from_kwp,
+                                          step=10.0)
+with col_p2:
+    # Inicializamos la inversión si no existe
+    if 'inv_total' not in st.session_state:
+        st.session_state.inv_total = costo_kwp_instalado * pot_sug
+        
+    inversion_total_input = st.number_input("Inversión Total (USD)", 
+                                            key="inv_total", 
+                                            on_change=update_from_inv,
+                                            step=100.0)
+
+# Otros parámetros
+col_d1, col_d2 = st.columns(2)
+with col_d1:
+    deg_año1 = st.number_input("📉 Degradación Año 1 (%)", value=2.0) / 100
+with col_d2:
+    atenuacion_anual = st.number_input("📉 Atenuación Anual (%)", value=0.55) / 100
+
+# 3. LÓGICA FINANCIERA FINAL
+costo_planta_total = st.session_state.inv_total
 ahorro_tributario_anual = costo_planta_total / 10
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
 # 4. CÁLCULO 25 AÑOS
-años_lista = list(range(1, 26))
 data_tabla = []
 suma_fin = 0
 año_payback = None
 
-for i in años_lista:
+for i in range(1, 26):
     rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1)) if i > 1 else (1 - deg_año1)
     indice_degradacion = -rendimiento_pct 
     prod = gen_anual_inicial * rendimiento_pct
@@ -77,89 +106,38 @@ for i in años_lista:
         "Año": i,
         "Índice de Degradación": f"{indice_degradacion:.3f}", 
         "Prod. (kWh/año)": f"{prod:,.0f}",
-        "Ahorro Energía": f"${ahorro_en:,.2f}",
-        "Ahorro Trib.": f"${beneficio_trib:,.2f}",
         "Ahorro Total Año": f"${total_anual:,.2f}",
         "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 5. DASHBOARD
-st.subheader("📊 Resumen Económico")
-col_res1, col_res2, col_res3, col_res4 = st.columns(4)
-col_res1.metric("Inversión Total", f"${costo_planta_total:,.2f}")
-col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
-col_res3.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
-payback_text = f"{año_payback} años" if año_payback else "> 25 años"
-col_res4.metric("Payback (Retorno)", payback_text)
-
+# 5. TABLA Y PDF
 st.markdown("---")
-df_proyeccion = pd.DataFrame(data_tabla)
-st.dataframe(df_proyeccion, use_container_width=True)
+st.dataframe(pd.DataFrame(data_tabla), use_container_width=True)
 
-# --- FUNCIÓN PDF A 25 AÑOS ---
+payback_text = f"{año_payback} años" if año_payback else "> 25 años"
+
 def crear_pdf():
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
     pdf.set_margins(20, 20, 20)
-    
-    # Banner Principal
-    pdf.set_fill_color(31, 119, 180)
-    pdf.rect(0, 0, 210, 35, 'F')
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font('Arial', 'B', 18)
-    pdf.cell(0, 15, 'PROPUESTA TÉCNICA Y ECONÓMICA SOLAR', 0, 1, 'C')
-    
-    # Datos Cliente
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(25)
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
+    pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
+    pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 18)
+    pdf.cell(0, 15, 'PROPUESTA ECONÓMICA SOLAR', 0, 1, 'C')
+    pdf.set_text_color(0, 0, 0); pdf.ln(25)
+    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'RESUMEN', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
-    pdf.cell(95, 7, f'Cliente: {nombre_cliente}', 0, 0)
-    pdf.cell(95, 7, f'Ciudad: {ciudad_sel}', 0, 1)
-    pdf.cell(95, 7, f'Proyecto: {nombre_proyecto}', 0, 0)
-    pdf.cell(95, 7, f'Asesor: {vendedor}', 0, 1)
-    
-    # Resumen con el costo por kWp incluido
-    pdf.ln(8)
-    pdf.set_fill_color(240, 240, 240)
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 10)
-    pdf.cell(95, 8, f'Inversión Total: ${costo_planta_total:,.2f}', 0, 0)
-    pdf.cell(95, 8, f'Payback: {payback_text}', 0, 1)
-    pdf.cell(95, 8, f'Potencia: {pot_sug:.2f} kWp', 0, 0)
-    pdf.cell(95, 8, f'Costo por kWp: ${costo_kwp_instalado:,.2f}', 0, 1) # Detalle en PDF
-    
-    # Tabla de 25 años
-    pdf.ln(8)
-    pdf.set_font('Arial', 'B', 10)
-    pdf.set_fill_color(31, 119, 180)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(15, 8, 'Año', 1, 0, 'C', True)
-    pdf.cell(25, 8, 'Ind. Deg.', 1, 0, 'C', True)
-    pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True)
-    pdf.cell(45, 8, 'Ahorro Año', 1, 0, 'C', True)
-    pdf.cell(45, 8, 'Acumulado', 1, 1, 'C', True)
-    
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font('Arial', '', 9)
-    
+    pdf.cell(95, 7, f'Cliente: {nombre_cliente}'); pdf.cell(95, 7, f'Inversión: ${costo_planta_total:,.2f}', 0, 1)
+    pdf.cell(95, 7, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(95, 7, f'Costo/kWp: ${st.session_state.costo_kwp:,.2f}', 0, 1)
+    pdf.ln(10)
+    pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
+    pdf.cell(20, 8, 'Año', 1, 0, 'C', True); pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True); pdf.cell(60, 8, 'Ahorro Año', 1, 0, 'C', True); pdf.cell(60, 8, 'Acumulado', 1, 1, 'C', True)
+    pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 9)
     for d in data_tabla:
-        pdf.cell(15, 7, str(d['Año']), 1, 0, 'C')
-        pdf.cell(25, 7, d['Índice de Degradación'], 1, 0, 'C')
+        pdf.cell(20, 7, str(d['Año']), 1, 0, 'C')
         pdf.cell(40, 7, d['Prod. (kWh/año)'], 1, 0, 'C')
-        pdf.cell(45, 7, d['Ahorro Total Año'], 1, 0, 'C')
-        pdf.cell(45, 7, d['Acumulado'], 1, 1, 'C')
-
+        pdf.cell(60, 7, d['Ahorro Total Año'], 1, 0, 'C')
+        pdf.cell(60, 7, d['Acumulado'], 1, 1, 'C')
     return pdf.output(dest='S').encode('latin-1')
 
-# Descarga
-st.sidebar.markdown("---")
-st.sidebar.download_button(
-    label="📥 Descargar Propuesta 25 Años (PDF)",
-    data=crear_pdf(),
-    file_name=f"Propuesta_25Anios_{nombre_cliente.replace(' ', '_')}.pdf",
-    mime="application/pdf"
-)
+st.sidebar.download_button("📥 Descargar PDF Proyectado", data=crear_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
