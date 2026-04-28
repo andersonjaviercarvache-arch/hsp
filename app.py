@@ -23,13 +23,18 @@ st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="w
 if 'costo_kwp' not in st.session_state:
     st.session_state.costo_kwp = 825.0
 
-# --- SIDEBAR: DATOS DEL CLIENTE ---
+# --- SIDEBAR: DATOS DEL CLIENTE Y TIPO DE PROYECTO ---
 st.sidebar.header("📋 Datos de la Propuesta")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Cliente Ejemplo")
-nombre_proyecto = st.sidebar.text_input("Nombre del Proyecto", "Instalación Residencial")
+nombre_proyecto = st.sidebar.text_input("Nombre del Proyecto", "Instalación Solar")
+
+# NUEVO: Selector de Tipo de Proyecto
+tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Comercial", "Residencial"])
+
 vendedor = st.sidebar.text_input("Asesor Técnico", "Ing. Solar")
 
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
+st.markdown(f"### Proyecto: {tipo_proyecto}")
 st.markdown("---")
 
 # 2. PARÁMETROS TÉCNICOS
@@ -80,7 +85,13 @@ with col_c2:
 
 # 3. LÓGICA FINANCIERA FINAL
 costo_planta_total = st.session_state.inv_total
-ahorro_tributario_anual = costo_planta_total / 10
+
+# LÓGICA DE AHORRO TRIBUTARIO SEGÚN TIPO DE PROYECTO
+if tipo_proyecto == "Comercial":
+    ahorro_tributario_anual = costo_planta_total / 10
+else:
+    ahorro_tributario_anual = 0.0
+
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
 # 4. CÁLCULO 25 AÑOS
@@ -94,7 +105,10 @@ for i in años_lista:
     indice_degradacion = -rendimiento_pct 
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
+    
+    # El beneficio tributario solo aplica los primeros 10 años en proyectos comerciales
     beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
+    
     total_anual = ahorro_en + beneficio_trib
     suma_fin += total_anual
     
@@ -120,26 +134,10 @@ col_res3.metric("Ahorro 25 Años", f"${suma_fin:,.2f}")
 payback_text = f"{año_payback} años" if año_payback else "> 25 años"
 col_res4.metric("Payback", payback_text)
 
-# 6. GRÁFICO Y TABLA
-col_grafico, col_tabla = st.columns([1, 1.4])
-
-with col_grafico:
-    st.subheader("Tiempo de Recuperación")
-    acumulado_vals = [float(d['Acumulado'].replace('$', '').replace(',', '')) for d in data_tabla]
-    fig, ax = plt.subplots(figsize=(10, 7))
-    ax.plot(años_lista, acumulado_vals, color="#1f77b4", marker="o", label="Flujo Acumulado")
-    ax.axhline(costo_planta_total, color='red', linestyle='--', label='Inversión')
-    if año_payback:
-        ax.axvline(año_payback, color='green', linestyle=':', label=f'Año {año_payback}')
-    ax.set_xlabel("Años")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    st.pyplot(fig)
-
-with col_tabla:
-    st.subheader("Proyección de Flujo de Caja")
-    df_proyeccion = pd.DataFrame(data_tabla)
-    st.dataframe(df_proyeccion, height=450, use_container_width=True)
+# 6. TABLA Y GRÁFICO
+st.subheader(f"Proyección de Flujo de Caja - Proyecto {tipo_proyecto}")
+df_proyeccion = pd.DataFrame(data_tabla)
+st.dataframe(df_proyeccion, height=450, use_container_width=True)
 
 # --- FUNCIÓN PDF ---
 def crear_pdf():
@@ -150,7 +148,7 @@ def crear_pdf():
     
     pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
     pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 18)
-    pdf.cell(0, 15, 'PROPUESTA TÉCNICA Y ECONÓMICA SOLAR', 0, 1, 'C')
+    pdf.cell(0, 15, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
     
     pdf.set_text_color(0, 0, 0); pdf.ln(25)
     pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
@@ -178,4 +176,4 @@ def crear_pdf():
     return pdf.output(dest='S').encode('latin-1')
 
 st.sidebar.markdown("---")
-st.sidebar.download_button("📥 Descargar Propuesta 25 Años", data=crear_pdf(), file_name=f"Propuesta_{nombre_cliente.replace(' ', '_')}.pdf")
+st.sidebar.download_button(f"📥 Descargar Propuesta {tipo_proyecto}", data=crear_pdf(), file_name=f"Propuesta_{tipo_proyecto}_{nombre_cliente.replace(' ', '_')}.pdf")
