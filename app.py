@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from fpdf import FPDF
+import base64
 
 # 1. Base de Datos Técnica Real
 ciudades_data = {
@@ -17,6 +19,12 @@ ciudades_data = {
 }
 
 st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="wide")
+
+# --- NUEVA SECCIÓN: DATOS DEL CLIENTE EN SIDEBAR ---
+st.sidebar.header("📋 Datos de la Propuesta")
+nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Cliente Ejemplo")
+nombre_proyecto = st.sidebar.text_input("Nombre del Proyecto", "Instalación Residencial")
+vendedor = st.sidebar.text_input("Asesor Técnico", "Ing. Solar")
 
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown("---")
@@ -58,7 +66,6 @@ for i in años_lista:
     else:
         rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1))
     
-    # Índice de degradación negativo (ej. -0.980, -0.975...)
     indice_degradacion = -rendimiento_pct 
     
     prod = gen_anual_inicial * rendimiento_pct
@@ -88,10 +95,8 @@ col_res1.metric("Inversión Total", f"${costo_planta_total:,.2f}")
 col_res2.metric("Potencia Sugerida", f"{pot_sug:.2f} kWp")
 col_res3.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
 
-if año_payback:
-    col_res4.metric("Payback (Retorno)", f"{año_payback} años")
-else:
-    col_res4.metric("Payback (Retorno)", "> 25 años")
+payback_text = f"{año_payback} años" if año_payback else "> 25 años"
+col_res4.metric("Payback (Retorno)", payback_text)
 
 st.markdown("---")
 
@@ -120,4 +125,76 @@ with col_tabla:
     df_proyeccion = pd.DataFrame(data_tabla)
     st.dataframe(df_proyeccion, height=480, use_container_width=True)
 
-st.success(f"✅ Análisis completado para {ciudad_sel}. El índice de degradación inicia en {- (1-deg_año1):.3f} y refleja el rendimiento acumulado negativo.")
+# --- NUEVA FUNCIÓN: GENERAR PDF ---
+def crear_pdf():
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.add_page()
+    pdf.set_margins(20, 20, 20)
+    
+    # Encabezado profesional
+    pdf.set_fill_color(31, 119, 180) # Azul
+    pdf.rect(0, 0, 210, 40, 'F')
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Arial', 'B', 20)
+    pdf.cell(0, 20, 'PROPUESTA TÉCNICA SOLAR', 0, 1, 'C')
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(25)
+    
+    # Información del Cliente
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(95, 8, f'Cliente: {nombre_cliente}', 0, 0)
+    pdf.cell(95, 8, f'Ciudad: {ciudad_sel}', 0, 1)
+    pdf.cell(95, 8, f'Proyecto: {nombre_proyecto}', 0, 0)
+    pdf.cell(95, 8, f'Asesor: {vendedor}', 0, 1)
+    
+    pdf.ln(10)
+    
+    # Resumen Ejecutivo
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 10, 'RESUMEN ECONÓMICO', 0, 1, 'L', fill=True)
+    pdf.set_font('Arial', '', 11)
+    pdf.cell(95, 10, f'Inversión Total: ${costo_planta_total:,.2f}', 0, 0)
+    pdf.cell(95, 10, f'Retorno Estimado: {payback_text}', 0, 1)
+    pdf.cell(95, 10, f'Potencia Instalada: {pot_sug:.2f} kWp', 0, 0)
+    pdf.cell(95, 10, f'Ahorro 25 años: ${suma_fin:,.2f}', 0, 1)
+    
+    pdf.ln(10)
+    
+    # Tabla de Proyección
+    pdf.set_font('Arial', 'B', 10)
+    pdf.set_fill_color(31, 119, 180)
+    pdf.set_text_color(255, 255, 255)
+    # Cabeceras de tabla corregidas
+    pdf.cell(15, 8, 'Año', 1, 0, 'C', True)
+    pdf.cell(30, 8, 'Ind. Deg.', 1, 0, 'C', True)
+    pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True)
+    pdf.cell(40, 8, 'Ahorro Año', 1, 0, 'C', True)
+    pdf.cell(45, 8, 'Acumulado', 1, 1, 'C', True)
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('Arial', '', 9)
+    # Solo mostrar los primeros 15 años para que quepa bien en una página
+    for d in data_tabla[:15]:
+        pdf.cell(15, 7, str(d['Año']), 1, 0, 'C')
+        pdf.cell(30, 7, d['Índice de Degradación'], 1, 0, 'C')
+        pdf.cell(40, 7, d['Prod. (kWh/año)'], 1, 0, 'C')
+        pdf.cell(40, 7, d['Ahorro Total Año'], 1, 0, 'C')
+        pdf.cell(45, 7, d['Acumulado'], 1, 1, 'C')
+
+    return pdf.output(dest='S').encode('latin-1')
+
+# Botón de descarga en Sidebar
+pdf_data = crear_pdf()
+st.sidebar.markdown("---")
+st.sidebar.download_button(
+    label="📥 Descargar Propuesta (PDF)",
+    data=pdf_data,
+    file_name=f"Propuesta_{nombre_cliente.replace(' ', '_')}.pdf",
+    mime="application/pdf"
+)
+
+st.success(f"✅ Análisis completado para {ciudad_sel}. Puedes descargar la propuesta en el panel izquierdo.")
