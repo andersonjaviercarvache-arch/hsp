@@ -1,80 +1,101 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import numpy as np
-from fpdf import FPDF
-import tempfile
-import os
 
-# ... (Base de datos y configuración inicial igual al código anterior)
+# 1. Base de Datos Técnica Real
+ciudades_data = {
+    "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
+    "Durán": {"hsp": [4.08, 3.98, 4.35, 4.48, 4.28, 4.05, 4.40, 4.88, 5.10, 5.05, 4.90, 4.62], "temp": 27.8},
+    "Quito": {"hsp": [4.85, 4.62, 4.28, 4.02, 4.15, 4.65, 5.18, 5.42, 5.35, 4.88, 4.55, 4.68], "temp": 14.5},
+    "Cuenca": {"hsp": [4.45, 4.38, 4.25, 4.15, 3.85, 3.72, 3.95, 4.35, 4.62, 4.75, 4.82, 4.55], "temp": 15.0},
+    "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
+}
 
-# --- DENTRO DE LA LÓGICA DE CÁLCULO ---
-# Asegúrate de tener estas listas para graficar
-años_lista = list(range(1, 26))
+st.set_page_config(page_title="Dashboard Solar Pro", layout="wide")
+
+# --- LÓGICA DE ESTADOS ---
+if 'costo_kwp' not in st.session_state: st.session_state.costo_kwp = 825.0
+
+# --- SIDEBAR ---
+st.sidebar.header("⚙️ Configuración")
+ciudad_sel = st.sidebar.selectbox("📍 Ciudad", list(ciudades_data.keys()))
+consumo_mensual = st.sidebar.number_input("⚡ Consumo (kWh/mes)", value=300.0)
+pago_planilla = st.sidebar.number_input("💵 Pago Planilla (USD)", value=30.0)
+tipo_proy = st.sidebar.selectbox("🏢 Tipo", ["Residencial", "Comercial"])
+
+# Cálculos Base
+costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
+info_c = ciudades_data[ciudad_sel]
+pr = 0.82 - ((max(0, info_c["temp"] - 15)) * 0.0045)
+hsp_avg = sum(info_c["hsp"]) / 12
+pot_sug = consumo_mensual / (hsp_avg * pr * 30.44)
+
+# Sincronización Inversión
+def up_kwp(): st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
+def up_inv(): st.session_state.costo_kwp = st.session_state.inv_total / pot_sug
+
+col_i1, col_i2 = st.sidebar.columns(2)
+with col_i1: st.number_input("USD/kWp", key="costo_kwp", on_change=up_kwp)
+with col_i2: 
+    if 'inv_total' not in st.session_state: st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
+    st.number_input("Inversión", key="inv_total", on_change=up_inv)
+
+# --- CÁLCULO DE FLUJO DE CAJA ---
+años = np.arange(1, 26)
 flujo_anual = []
-acumulados_lista = []
-suma_fin = 0
+acumulado = []
+suma = 0
+gen_ini = pot_sug * hsp_avg * pr * 365
+ahorro_trib = (st.session_state.inv_total / 10) if tipo_proy == "Comercial" else 0
 
-for i in años_lista:
-    rend = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1)) if i > 1 else (1 - deg_año1)
-    total_año = (gen_anual_inicial * rend * costo_kwh) + (ahorro_trib_anual if i <= 10 else 0)
-    suma_fin += total_año
-    flujo_anual.append(total_año)
-    acumulados_lista.append(suma_fin)
+for a in años:
+    # Degradación (2% año 1, 0.55% resto)
+    rend = 0.98 * (0.9945**(a-1))
+    ingreso = (gen_ini * rend * costo_kwh) + (ahorro_trib if a <= 10 else 0)
+    suma += ingreso
+    flujo_anual.append(ingreso)
+    acumulado.append(suma)
 
-# --- FUNCIÓN PDF ACTUALIZADA ---
-def crear_pdf_con_flujo():
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # PÁGINA 1: RESUMEN Y GRÁFICOS
-    pdf.add_page()
-    pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
-    pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 15, 'ESTUDIO FINANCIERO Y FLUJO DE CAJA', 0, 1, 'C')
-    
-    pdf.set_text_color(0, 0, 0); pdf.ln(25)
-    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, '1. PROYECTO DE FLUJO DE CAJA ANUAL', 0, 1)
-    
-    # GRÁFICO 1: Barras de Flujo Anual
-    fig1, ax1 = plt.subplots(figsize=(8, 3.5))
-    ax1.bar(años_lista, flujo_anual, color='#2ecc71', label='Ahorro + Beneficio')
-    ax1.set_title("Ingresos Anuales Proyectados (USD)")
-    ax1.grid(axis='y', alpha=0.3)
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
-        fig1.savefig(tmp1.name, format='png', dpi=150, bbox_inches='tight')
-        pdf.image(tmp1.name, x=15, w=180)
-        path1 = tmp1.name
+# --- INTERFAZ PRINCIPAL ---
+st.title("📊 Dashboard de Flujo de Caja Solar")
+st.info(f"Costo calculado por kWh: **${costo_kwh:.4f}**")
 
-    pdf.ln(5)
-    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, '2. RETORNO DE INVERSIÓN ACUMULADO', 0, 1)
+# Métricas Clave
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Potencia Sistema", f"{pot_sug:.2f} kWp")
+m2.metric("Inversión Inicial", f"${st.session_state.inv_total:,.2f}")
+m3.metric("Ahorro Total (25a)", f"${suma:,.2f}")
+payback = next((a for a, v in zip(años, acumulado) if v >= st.session_state.inv_total), ">25")
+m4.metric("Retorno (Payback)", f"{payback} años")
 
-    # GRÁFICO 2: Línea de Acumulado con Sombreado de Ganancia
-    fig2, ax2 = plt.subplots(figsize=(8, 3.5))
-    ax2.plot(años_lista, acumulados_lista, color='#1f77b4', linewidth=2, label='Flujo Acumulado')
-    ax2.axhline(y=costo_planta_total, color='red', linestyle='--', label='Inversión Inicial')
-    ax2.fill_between(años_lista, acumulados_lista, costo_planta_total, 
-                     where=(np.array(acumulados_lista) >= costo_planta_total), 
-                     color='green', alpha=0.2, label='Ganancia Neta')
-    ax2.set_title("Punto de Equilibrio y Utilidad Neta")
-    ax2.legend(loc='upper left')
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
-        fig2.savefig(tmp2.name, format='png', dpi=150, bbox_inches='tight')
-        pdf.image(tmp2.name, x=15, w=180)
-        path2 = tmp2.name
+st.markdown("---")
 
-    # PÁGINA 2: TABLA DE DATOS
-    pdf.add_page()
-    pdf.set_font('Arial', 'B', 11); pdf.cell(0, 10, 'DETALLE CRONOLÓGICO DE FLUJO', 0, 1)
-    # ... (Aquí va el código de la tabla que ya tienes)
+# --- GRÁFICOS INTERACTIVOS ---
+col_g1, col_g2 = st.columns(2)
 
-    res = pdf.output(dest='S').encode('latin-1')
-    os.remove(path1); os.remove(path2)
-    return res
+with col_g1:
+    st.subheader("💰 Flujo de Caja Anual")
+    fig_bar = go.Figure()
+    fig_bar.add_trace(go.Bar(x=años, y=flujo_anual, name="Ingreso Anual", marker_color='#2ecc71'))
+    fig_bar.update_layout(xaxis_title="Año", yaxis_title="USD", height=400, margin=dict(l=20, r=20, t=30, b=20))
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-# Botón de descarga
-st.sidebar.download_button("📥 Descargar Reporte Financiero", 
-                          data=crear_pdf_con_flujo(), 
-                          file_name=f"Flujo_Caja_{nombre_cliente}.pdf")
+with col_g2:
+    st.subheader("📈 Recuperación Acumulada")
+    fig_line = go.Figure()
+    # Línea de inversión
+    fig_line.add_trace(go.Scatter(x=años, y=[st.session_state.inv_total]*25, name="Inversión", line=dict(color='red', dash='dash')))
+    # Línea de acumulado
+    fig_line.add_trace(go.Scatter(x=años, y=acumulado, name="Flujo Acumulado", fill='tonexty', fillcolor='rgba(46, 204, 113, 0.2)', line=dict(color='#1f77b4')))
+    fig_line.update_layout(xaxis_title="Año", yaxis_title="USD", height=400, margin=dict(l=20, r=20, t=30, b=20))
+    st.plotly_chart(fig_line, use_container_width=True)
+
+# Tabla de datos
+with st.expander("📄 Ver Tabla de Datos Detallada"):
+    df = pd.DataFrame({
+        "Año": años,
+        "Flujo Anual (USD)": flujo_anual,
+        "Acumulado (USD)": acumulado
+    })
+    st.dataframe(df.style.format("${:,.2f}"), use_container_width=True)
