@@ -34,7 +34,7 @@ st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown(f"### Proyecto: {tipo_proyecto}")
 st.markdown("---")
 
-# 2. PARÁMETROS TÉCNICOS
+# 2. PARÁMETROS TÉCNICOS Y DE FACTURACIÓN
 with st.container():
     col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
@@ -43,8 +43,11 @@ with st.container():
     with col_input2:
         consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=300.0, step=10.0, min_value=1.0)
     with col_input3:
-        # Volvemos al ingreso directo de Costo kWh
-        costo_kwh = st.number_input("💵 Costo kWh (USD)", value=0.0920, format="%.4f", step=0.0001)
+        # NUEVO CAMPO: Pago de planilla mensual
+        pago_planilla = st.number_input("💵 Pago Planilla Mensual (USD)", value=27.60, step=1.00, format="%.2f")
+        # Cálculo automático del costo por kWh
+        costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
+        st.info(f"Costo kWh: ${costo_kwh:.4f}")
     with col_input4:
         deg_año1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0, format="%.2f", step=0.1) / 100
     with col_input5:
@@ -80,12 +83,11 @@ ahorro_tributario_anual = (costo_planta_total / 10) if tipo_proyecto == "Comerci
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
 # 4. CÁLCULO 25 AÑOS
-años_lista = list(range(1, 26))
 data_tabla = []
 suma_fin = 0
 año_payback = None
 
-for i in años_lista:
+for i in range(1, 26):
     rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1)) if i > 1 else (1 - deg_año1)
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
@@ -106,7 +108,7 @@ for i in años_lista:
         "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 5. DASHBOARD Y RESULTADOS
+# 5. RESULTADOS VISUALES
 st.markdown("---")
 col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 col_res1.metric("Inversión Final", f"${costo_planta_total:,.2f}")
@@ -115,7 +117,7 @@ col_res3.metric("Ahorro 25 Años", f"${suma_fin:,.2f}")
 payback_text = f"{año_payback} años" if año_payback else "> 25 años"
 col_res4.metric("Payback", payback_text)
 
-st.subheader(f"Proyección de Flujo de Caja - {tipo_proyecto}")
+st.subheader(f"Proyección de Flujo de Caja (25 años) - {tipo_proyecto}")
 st.dataframe(pd.DataFrame(data_tabla), height=450, use_container_width=True)
 
 # --- FUNCIÓN PDF ---
@@ -139,7 +141,7 @@ def crear_pdf():
     pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 10)
     pdf.cell(95, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(95, 8, f'Retorno: {payback_text}', 0, 1)
-    pdf.cell(95, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(95, 8, f'Costo/kWp: ${st.session_state.costo_kwp:,.2f}', 0, 1)
+    pdf.cell(95, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(95, 8, f'Planilla Mensual: ${pago_planilla:.2f}', 0, 1)
     
     pdf.ln(8); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
     pdf.cell(15, 8, 'Año', 1, 0, 'C', True); pdf.cell(25, 8, 'Ind. Deg.', 1, 0, 'C', True); pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True); pdf.cell(45, 8, 'Ahorro Año', 1, 0, 'C', True); pdf.cell(45, 8, 'Acumulado', 1, 1, 'C', True)
