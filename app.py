@@ -93,7 +93,6 @@ for i in range(1, 26):
     total_anual = ahorro_en + beneficio_trib
     suma_fin += total_anual
     
-    # Datos para el gráfico
     años_list.append(i)
     acumulados_list.append(suma_fin)
     
@@ -102,7 +101,7 @@ for i in range(1, 26):
 
     data_tabla.append({
         "Año": i,
-        "Índice de Degradación": f"{-rendimiento_pct:.3f}", 
+        "Índice de Degradación": f"{(rendimiento_pct*100):.1f}%", 
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
@@ -127,7 +126,7 @@ def crear_pdf():
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
-    pdf.set_margins(20, 20, 20)
+    pdf.set_margins(15, 20, 15)
     
     pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
     pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 18)
@@ -136,25 +135,49 @@ def crear_pdf():
     pdf.set_text_color(0, 0, 0); pdf.ln(25)
     pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
-    pdf.cell(95, 7, f'Cliente: {nombre_cliente}'); pdf.cell(95, 7, f'Ciudad: {ciudad_sel}', 0, 1)
-    pdf.cell(95, 7, f'Proyecto: {nombre_proyecto}'); pdf.cell(95, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
+    pdf.cell(90, 7, f'Cliente: {nombre_cliente}'); pdf.cell(90, 7, f'Ciudad: {ciudad_sel}', 0, 1)
+    pdf.cell(90, 7, f'Proyecto: {nombre_proyecto}'); pdf.cell(90, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     
     pdf.ln(8); pdf.set_fill_color(240, 240, 240); pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 10)
-    pdf.cell(95, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(95, 8, f'Retorno: {payback_text}', 0, 1)
-    pdf.cell(95, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(95, 8, f'Planilla Mensual: ${pago_planilla:.2f}', 0, 1)
+    pdf.cell(90, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(90, 8, f'Retorno: {payback_text}', 0, 1)
+    pdf.cell(90, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(90, 8, f'Planilla Mensual: ${pago_planilla:.2f}', 0, 1)
     
-    pdf.ln(8); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
-    pdf.cell(15, 8, 'Año', 1, 0, 'C', True); pdf.cell(25, 8, 'Ind. Deg.', 1, 0, 'C', True); pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True); pdf.cell(45, 8, 'Ahorro Año', 1, 0, 'C', True); pdf.cell(45, 8, 'Acumulado', 1, 1, 'C', True)
+    pdf.ln(8); pdf.set_font('Arial', 'B', 9); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
     
-    pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 9)
+    # Definición dinámica de columnas según tipo de proyecto
+    if tipo_proyecto == "Comercial":
+        pdf.cell(10, 8, 'Año', 1, 0, 'C', True)
+        pdf.cell(20, 8, 'Deg.', 1, 0, 'C', True)
+        pdf.cell(30, 8, 'Prod. kWh', 1, 0, 'C', True)
+        pdf.cell(30, 8, 'Ahorro En.', 1, 0, 'C', True)
+        pdf.cell(30, 8, 'Ahorro Trib.', 1, 0, 'C', True) # Nueva Columna
+        pdf.cell(30, 8, 'Total Año', 1, 0, 'C', True)
+        pdf.cell(30, 8, 'Acumulado', 1, 1, 'C', True)
+    else:
+        pdf.cell(15, 8, 'Año', 1, 0, 'C', True)
+        pdf.cell(25, 8, 'Ind. Deg.', 1, 0, 'C', True)
+        pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True)
+        pdf.cell(50, 8, 'Ahorro Año', 1, 0, 'C', True)
+        pdf.cell(50, 8, 'Acumulado', 1, 1, 'C', True)
+    
+    pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
     for d in data_tabla:
-        pdf.cell(15, 7, str(d['Año']), 1, 0, 'C')
-        pdf.cell(25, 7, d['Índice de Degradación'], 1, 0, 'C')
-        pdf.cell(40, 7, d['Prod. (kWh/año)'], 1, 0, 'C')
-        pdf.cell(45, 7, d['Ahorro Total Año'], 1, 0, 'C')
-        pdf.cell(45, 7, d['Acumulado'], 1, 1, 'C')
+        if tipo_proyecto == "Comercial":
+            pdf.cell(10, 7, str(d['Año']), 1, 0, 'C')
+            pdf.cell(20, 7, d['Índice de Degradación'], 1, 0, 'C')
+            pdf.cell(30, 7, d['Prod. (kWh/año)'], 1, 0, 'C')
+            pdf.cell(30, 7, d['Ahorro Energía'], 1, 0, 'C')
+            pdf.cell(30, 7, d['Ahorro Trib.'], 1, 0, 'C') # Dato de Ahorro Tributario
+            pdf.cell(30, 7, d['Ahorro Total Año'], 1, 0, 'C')
+            pdf.cell(30, 7, d['Acumulado'], 1, 1, 'C')
+        else:
+            pdf.cell(15, 7, str(d['Año']), 1, 0, 'C')
+            pdf.cell(25, 7, d['Índice de Degradación'], 1, 0, 'C')
+            pdf.cell(40, 7, d['Prod. (kWh/año)'], 1, 0, 'C')
+            pdf.cell(50, 7, d['Ahorro Total Año'], 1, 0, 'C')
+            pdf.cell(50, 7, d['Acumulado'], 1, 1, 'C')
 
     # --- GENERACIÓN DEL GRÁFICO ---
     pdf.ln(10)
@@ -167,17 +190,13 @@ def crear_pdf():
     plt.title("Flujo de Caja Acumulado (25 Años)")
     plt.xlabel("Año"); plt.ylabel("USD"); plt.grid(True, alpha=0.3); plt.legend()
     
-    # Guardar gráfico temporalmente
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
         plt.savefig(tmpfile.name, format='png', dpi=150, bbox_inches='tight')
         plot_path = tmpfile.name
     
-    # Insertar en el PDF (verificando espacio)
-    if pdf.get_y() > 180: # Si queda poco espacio, pasar a nueva página
-        pdf.add_page()
+    if pdf.get_y() > 180: pdf.add_page()
     pdf.image(plot_path, x=15, w=180)
     
-    # Limpiar archivo temporal
     plt.close()
     os.remove(plot_path)
 
