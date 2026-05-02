@@ -16,7 +16,7 @@ ciudades_data = {
     "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
 }
 
-st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout="wide")
+st.set_page_config(page_title="Latitud Solar - Simulador Pro", layout="wide")
 
 if 'costo_kwp' not in st.session_state:
     st.session_state.costo_kwp = 850.0
@@ -28,7 +28,7 @@ n_proyecto = st.sidebar.text_input("Número de Proyecto", "P0000000010")
 tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"])
 vendedor = st.sidebar.text_input("Asesor Comercial", "Ing. Solar")
 
-st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
+st.title("☀️ Latitud Solar: Análisis de Inversión Energética")
 
 # --- BLOQUE 1: PARÁMETROS TÉCNICOS ---
 with st.container():
@@ -96,36 +96,43 @@ for año in range(1, 26):
 
 st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
 
-# --- FUNCIÓN PDF ---
+# --- FUNCIÓN PDF CON LOGO ESQUINA SUPERIOR IZQUIERDA ---
 def generar_pdf():
     pdf = FPDF()
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     
-    # INSERCIÓN DEL LOGO ORIGINAL
-    # Intenta cargar 'logo.png'. Si no existe, usa texto como respaldo.
-    if os.path.exists("logo.png"):
-        pdf.image("logo.png", x=15, y=10, w=40)
+    # LOGO LATITUD SOLAR (Esquina Superior Izquierda)
+    if os.path.exists("logo_latitud.png"):
+        pdf.image("logo_latitud.png", x=15, y=10, w=45) 
     else:
-        pdf.set_font('Arial', 'B', 12)
+        pdf.set_font('Arial', 'B', 14)
         pdf.cell(50, 10, 'Latitud Solar', 0, 0, 'L')
     
+    # Datos de la Empresa (Alineados a la derecha del logo)
     pdf.set_font('Arial', 'B', 9)
-    pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'L')
-    pdf.set_font('Arial', '', 8); pdf.set_x(65)
-    pdf.cell(50, 5, 'RUC   0993403111001', 0, 0, 'L')
-    pdf.cell(0, 5, 'TELEFONOS:  0969952794-0959032257', 0, 1, 'L')
+    pdf.set_xy(110, 10)
+    pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'R')
+    pdf.set_font('Arial', '', 8)
+    pdf.set_x(110)
+    pdf.cell(0, 5, 'RUC   0993403111001', 0, 1, 'R')
+    pdf.set_x(110)
+    pdf.cell(0, 5, '0969952794 - 0959032257', 0, 1, 'R')
     
-    pdf.ln(10); pdf.set_font('Arial', 'B', 16)
+    # Título Propuesta
+    pdf.ln(15)
+    pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
     pdf.set_draw_color(31, 119, 180); pdf.set_line_width(0.8)
     pdf.line(40, pdf.get_y(), 170, pdf.get_y())
     
+    # Datos del Proyecto
     pdf.ln(12); pdf.set_font('Arial', 'B', 10); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 9)
     pdf.cell(95, 6, f'Cliente: {nombre_cliente}'); pdf.cell(0, 6, f'Ciudad: {ciudad_sel}', 0, 1)
     pdf.cell(95, 6, f'Proyecto: {n_proyecto}'); pdf.cell(0, 6, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     
+    # Resumen Financiero
     pdf.ln(8); pdf.set_fill_color(240, 240, 240)
     pdf.set_font('Arial', 'B', 10); pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 9); pdf.ln(2)
@@ -133,10 +140,11 @@ def generar_pdf():
     pdf.cell(95, 6, f'Inversión Total: ${inv_final:,.2f}'); pdf.cell(0, 6, f'Retorno: {retorno_texto}', 0, 1)
     pdf.cell(95, 6, f'Potencia Sugerida: {potencia_sug:.2f} kWp'); pdf.cell(0, 6, f'Planilla Mensual: ${pago_planilla:,.2f}', 0, 1)
     
+    # Tabla de Datos
     pdf.ln(10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
     pdf.set_draw_color(50, 50, 50); pdf.set_line_width(0.2)
-    cols_w = [15, 25, 35, 35, 35, 40]
-    headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Acumulado']
+    cols_w = [12, 20, 30, 35, 35, 48]
+    headers = ['Año', 'Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Acumulado']
     for i in range(len(headers)): pdf.cell(cols_w[i], 8, headers[i], 1, 0, 'C', fill=True)
     pdf.ln()
     
@@ -149,14 +157,19 @@ def generar_pdf():
         pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
         pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
 
+    # Gráfico de flujo
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(años, acumulados, color='#1f77b4', marker='o')
-    ax.axhline(y=inv_final, color='red', linestyle='--')
-    ax.set_title("Flujo de Caja Acumulado"); ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+    ax.axhline(y=inv_final, color='red', linestyle='--', label="Inversión")
+    ax.set_title("Proyección de Ahorro Acumulado"); ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+    
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
         plt.savefig(tmp.name, dpi=150, bbox_inches='tight'); plot_p = tmp.name
+    
     if pdf.get_y() > 180: pdf.add_page()
     pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
+    
     return pdf.output(dest='S').encode('latin-1')
 
-st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
+st.sidebar.markdown("---")
+st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_LatitudSolar_{nombre_cliente}.pdf")
