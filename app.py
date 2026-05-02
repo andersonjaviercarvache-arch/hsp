@@ -5,7 +5,7 @@ from fpdf import FPDF
 import tempfile
 import os
 
-# 1. Base de Datos Técnica Real
+# 1. Base de Datos Técnica Real (Sustentada en bases de datos meteo)
 ciudades_data = {
     "Mes": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
     "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
@@ -33,9 +33,8 @@ vendedor = st.sidebar.text_input("Asesor Técnico", "Ing. Solar")
 
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown(f"### Proyecto: {tipo_proyecto}")
-st.markdown("---")
 
-# 2. PARÁMETROS TÉCNICOS
+# 2. PARÁMETROS TÉCNICOS (VISIBLES EN APP)
 with st.container():
     col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
@@ -52,14 +51,13 @@ with st.container():
     with col_input5:
         atenuacion_anual = st.number_input("📉 Aten. Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
-# Lógica de Datos Meteorológicos
+# Lógica Meteorológica (Influye en los cálculos, se muestra solo en App)
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
-# --- NUEVA SECCIÓN: INFO METEOROLÓGICA ---
 with st.expander("🌍 Información Meteorológica y de Eficiencia - " + ciudad_sel, expanded=True):
     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
     m_col1.metric("HSP Promedio Anual", f"{hsp_promedio_base:.2f} h/día")
@@ -83,16 +81,13 @@ with col_c2:
         st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
     st.number_input("Inversión Total del Proyecto (USD)", key="inv_total", on_change=update_from_inv, step=100.0)
 
-# 3. LÓGICA FINANCIERA
+# 3. LÓGICA FINANCIERA Y TABLA
 costo_planta_total = st.session_state.inv_total
 ahorro_tributario_anual = (costo_planta_total / 10) if tipo_proyecto == "Comercial" else 0.0
 
-# 4. CÁLCULO 25 AÑOS
 data_tabla = []
-años_list = []
-acumulados_list = []
-suma_fin = 0
-año_payback = None
+años_list, acumulados_list = [], []
+suma_fin, año_payback = 0, None
 
 for i in range(1, 26):
     rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1)) if i > 1 else (1 - deg_año1)
@@ -104,13 +99,12 @@ for i in range(1, 26):
     
     años_list.append(i)
     acumulados_list.append(suma_fin)
-    
     if suma_fin >= costo_planta_total and año_payback is None:
         año_payback = i
 
     data_tabla.append({
         "Año": i,
-        "Índice de Degradación": f"-{rendimiento_pct:.3f}", 
+        "Índice de Degradación": f"{rendimiento_pct:.3f}", 
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
@@ -118,7 +112,7 @@ for i in range(1, 26):
         "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 5. RESULTADOS VISUALES
+# 5. RESULTADOS EN APP
 st.markdown("---")
 col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 col_res1.metric("Inversión Final", f"${costo_planta_total:,.2f}")
@@ -127,35 +121,31 @@ col_res3.metric("Ahorro 25 Años", f"${suma_fin:,.2f}")
 payback_text = f"{año_payback} años" if año_payback else "> 25 años"
 col_res4.metric("Payback", payback_text)
 
-st.subheader(f"Proyección de Flujo de Caja (25 años) - {tipo_proyecto}")
 st.dataframe(pd.DataFrame(data_tabla), height=450, use_container_width=True)
 
-# --- FUNCIÓN PDF ---
+# --- FUNCIÓN PDF (METEO ELIMINADO) ---
 def crear_pdf():
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
-    pdf.set_margins(15, 20, 15)
     
-    # Encabezado
+    # Banner Principal
     pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
     pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 18)
-    pdf.cell(0, 15, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
+    pdf.cell(0, 15, f'PROPUESTA COMERCIAL SOLAR', 0, 1, 'C')
     
-    # Datos del Proyecto y Clima
+    # Resumen Ejecutivo (Sin Datos Meteo)
     pdf.set_text_color(0, 0, 0); pdf.ln(25)
-    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'DATOS TÉCNICOS Y CLIMÁTICOS', 0, 1, 'L')
+    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'RESUMEN DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
-    pdf.cell(90, 7, f'Cliente: {nombre_cliente}'); pdf.cell(90, 7, f'Ciudad: {ciudad_sel}', 0, 1)
-    pdf.cell(90, 7, f'HSP Promedio: {hsp_promedio_base:.2f} h/día'); pdf.cell(90, 7, f'Temp. Promedio: {temp_ciudad}°C', 0, 1)
-    pdf.cell(90, 7, f'Performance Ratio (PR): {pr_ajustado:.2%}'); pdf.cell(90, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
+    pdf.cell(90, 7, f'Cliente: {nombre_cliente}'); pdf.cell(90, 7, f'Proyecto: {nombre_proyecto}', 0, 1)
+    pdf.cell(90, 7, f'Tipo: {tipo_proyecto}'); pdf.cell(90, 7, f'Asesor: {vendedor}', 0, 1)
     
-    # Resumen Financiero
-    pdf.ln(8); pdf.set_fill_color(240, 240, 240); pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
+    pdf.ln(5); pdf.set_fill_color(240, 240, 240); pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'PROYECCIÓN FINANCIERA', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 10)
-    pdf.cell(90, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(90, 8, f'Retorno Estimado: {payback_text}', 0, 1)
-    pdf.cell(90, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(90, 8, f'Generación Año 1: {gen_anual_inicial:,.0f} kWh/año', 0, 1)
+    pdf.cell(90, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(90, 8, f'Tiempo de Recuperación: {payback_text}', 0, 1)
+    pdf.cell(90, 8, f'Potencia Instalada: {pot_sug:.2f} kWp'); pdf.cell(90, 8, f'Generación Estimada Año 1: {gen_anual_inicial:,.0f} kWh', 0, 1)
     
     # Tabla de Proyección
     pdf.ln(8); pdf.set_font('Arial', 'B', 9); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
@@ -165,7 +155,7 @@ def crear_pdf():
         headers = ['Año', 'Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Total Año', 'Acumulado']
     else:
         widths = [15, 25, 45, 45, 50]
-        headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro Año', 'Acumulado']
+        headers = ['Año', 'Deg.', 'Prod. kWh', 'Ahorro Año', 'Acumulado']
 
     for i in range(len(headers)):
         pdf.cell(widths[i], 8, headers[i], 1, 0, 'C', True)
@@ -188,28 +178,21 @@ def crear_pdf():
             pdf.cell(widths[3], 7, d['Ahorro Total Año'], 1, 0, 'C')
             pdf.cell(widths[4], 7, d['Acumulado'], 1, 1, 'C')
 
-    # Gráfico
-    pdf.ln(10)
+    # Gráfico de flujo
     plt.figure(figsize=(8, 4))
-    plt.plot(años_list, acumulados_list, marker='o', linestyle='-', color='#1f77b4', label='Flujo Acumulado')
-    plt.axhline(y=costo_planta_total, color='r', linestyle='--', label='Inversión Inicial')
-    plt.fill_between(años_list, acumulados_list, costo_planta_total, 
-                     where=(pd.Series(acumulados_list) >= costo_planta_total), 
-                     color='green', alpha=0.2, label='Ganancia Neta')
-    plt.title("Flujo de Caja Acumulado (25 Años)")
-    plt.xlabel("Año"); plt.ylabel("USD"); plt.grid(True, alpha=0.3); plt.legend()
+    plt.plot(años_list, acumulados_list, marker='o', color='#1f77b4')
+    plt.axhline(y=costo_planta_total, color='r', linestyle='--')
+    plt.title("Retorno de Inversión Acumulado")
+    plt.grid(True, alpha=0.3)
     
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-        plt.savefig(tmpfile.name, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(tmpfile.name, format='png', dpi=150)
         plot_path = tmpfile.name
     
     if pdf.get_y() > 180: pdf.add_page()
     pdf.image(plot_path, x=15, w=180)
-    
     plt.close()
-    os.remove(plot_path)
-
     return pdf.output(dest='S').encode('latin-1')
 
 st.sidebar.markdown("---")
-st.sidebar.download_button(f"📥 Descargar Propuesta {tipo_proyecto}", data=crear_pdf(), file_name=f"Propuesta_{nombre_cliente.replace(' ', '_')}.pdf")
+st.sidebar.download_button(f"📥 Descargar Propuesta Comercial", data=crear_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
