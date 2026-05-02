@@ -20,13 +20,13 @@ st.set_page_config(page_title="HSP Ecuador - Análisis 25 Años", layout="wide")
 if 'costo_kwp' not in st.session_state:
     st.session_state.costo_kwp = 825.0
 
-# --- SIDEBAR ---
+# --- SIDEBAR: DATOS DEL CLIENTE ---
 st.sidebar.header("📋 Datos de la Propuesta")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Cliente Ejemplo")
 tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Comercial", "Residencial"])
 vendedor = st.sidebar.text_input("Asesor Técnico", "Ing. Solar")
 
-# --- PARÁMETROS ---
+# --- PARÁMETROS PRINCIPALES ---
 col_in1, col_in2, col_in3 = st.columns(3)
 with col_in1:
     ciudad_sel = st.selectbox("📍 Ciudad", list(ciudades_data.keys()))
@@ -41,7 +41,7 @@ pr = 0.82 - ((max(0, info_c["temp"] - 15)) * 0.0045)
 hsp_avg = sum(info_c["hsp"]) / 12
 pot_sug = consumo_mensual / (hsp_avg * pr * 30.44)
 
-# Inversión
+# Lógica de sincronización de costos
 def up_kwp(): st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
 def up_inv(): st.session_state.costo_kwp = st.session_state.inv_total / pot_sug
 
@@ -49,7 +49,7 @@ st.sidebar.number_input("Costo kWp", key="costo_kwp", on_change=up_kwp)
 if 'inv_total' not in st.session_state: st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
 st.sidebar.number_input("Inversión Total", key="inv_total", on_change=up_inv)
 
-# --- CÁLCULO 25 AÑOS ---
+# --- CÁLCULOS ---
 costo_total = st.session_state.inv_total
 ahorro_trib = (costo_total / 10) if tipo_proyecto == "Comercial" else 0
 gen_ini = pot_sug * hsp_avg * pr * 365
@@ -61,7 +61,7 @@ suma_fin = 0
 año_payback = None
 
 for i in range(1, 26):
-    rend = 0.98 * (0.9945**(i-1)) # Degradación estándar
+    rend = 0.98 * (0.9945**(i-1))
     ahorro_anual = (gen_ini * rend * costo_kwh) + (ahorro_trib if i <= 10 else 0)
     suma_fin += ahorro_anual
     
@@ -79,7 +79,7 @@ for i in range(1, 26):
     })
 
 # --- FUNCIÓN PDF ---
-def generar_pdf_completo():
+def generar_pdf_final():
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -87,70 +87,66 @@ def generar_pdf_completo():
     # Header
     pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
     pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 15, f'ANÁLISIS FINANCIERO 25 AÑOS - {nombre_cliente}', 0, 1, 'C')
+    pdf.cell(0, 15, f'PROPUESTA TÉCNICA - {nombre_cliente}', 0, 1, 'C')
     
-    # Resumen Inicial
+    # Resumen
     pdf.set_text_color(0, 0, 0); pdf.ln(25)
-    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 8, 'RESUMEN EJECUTIVO', 0, 1)
+    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1)
     pdf.set_font('Arial', '', 10)
     pdf.cell(95, 7, f'Inversión Inicial: ${costo_total:,.2f}'); pdf.cell(95, 7, f'Payback: {año_payback} años', 0, 1)
-    pdf.cell(95, 7, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(95, 7, f'Ahorro Total 25a: ${suma_fin:,.2f}', 0, 1)
+    pdf.cell(95, 7, f'Potencia Sugerida: {pot_sug:.2f} kWp'); pdf.cell(95, 7, f'Ciudad: {ciudad_sel}', 0, 1)
     pdf.ln(5)
 
-    # Tabla de Proyección
+    # Tabla de Proyección (Los 25 años)
     pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(230, 230, 230)
-    pdf.cell(20, 8, 'Año', 1, 0, 'C', True); pdf.cell(50, 8, 'Gen. (kWh/año)', 1, 0, 'C', True)
-    pdf.cell(60, 8, 'Ahorro Anual (USD)', 1, 0, 'C', True); pdf.cell(60, 8, 'Acumulado (USD)', 1, 1, 'C', True)
+    pdf.cell(20, 8, 'Año', 1, 0, 'C', True)
+    pdf.cell(50, 8, 'Gen. (kWh/año)', 1, 0, 'C', True)
+    pdf.cell(60, 8, 'Ahorro Anual (USD)', 1, 0, 'C', True)
+    pdf.cell(60, 8, 'Acumulado (USD)', 1, 1, 'C', True)
     
     pdf.set_font('Arial', '', 9)
-    # Imprimir primeros 12 años en pág 1 para dejar espacio al gráfico
-    for row in data_tabla[:13]:
+    for row in data_tabla:
         pdf.cell(20, 7, str(row['Año']), 1, 0, 'C')
         pdf.cell(50, 7, row['Prod. kWh'], 1, 0, 'C')
         pdf.cell(60, 7, row['Ahorro Año'], 1, 0, 'C')
         pdf.cell(60, 7, row['Acumulado'], 1, 1, 'C')
 
-    # --- GRÁFICO DEBAJO DE LA TABLA ---
-    plt.figure(figsize=(10, 4))
-    plt.plot(años_eje, acumulados_eje, color='#1f77b4', marker='o', label='Flujo Acumulado')
-    plt.axhline(y=costo_total, color='r', linestyle='--', label='Inversión')
-    plt.fill_between(años_eje, acumulados_eje, costo_total, where=(pd.Series(acumulados_eje) >= costo_total), color='green', alpha=0.2)
-    plt.title("Retorno de Inversión (ROI) - 25 Años")
-    plt.grid(True, alpha=0.3); plt.legend()
+    # --- GRÁFICO AL FINAL (Después de la tabla) ---
+    pdf.ln(10)
+    plt.figure(figsize=(10, 5))
+    plt.plot(años_eje, acumulados_eje, color='#1f77b4', linewidth=2, marker='o', label='Flujo Acumulado')
+    plt.axhline(y=costo_total, color='red', linestyle='--', label='Inversión')
+    plt.fill_between(años_eje, acumulados_eje, costo_total, where=(pd.Series(acumulados_eje) >= costo_total), color='green', alpha=0.1)
+    plt.title("Proyección de Recuperación de Inversión (25 Años)")
+    plt.xlabel("Año"); plt.ylabel("USD Acumulado"); plt.legend(); plt.grid(True, alpha=0.3)
     
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        plt.savefig(tmp.name, format='png', dpi=120)
-        pdf.ln(5)
+        plt.savefig(tmp.name, format='png', dpi=150, bbox_inches='tight')
+        # Verificar si hay espacio en la página actual para el gráfico, si no, agregar página
+        if pdf.get_y() > 180: 
+            pdf.add_page()
         pdf.image(tmp.name, x=15, w=180)
         tmp_path = tmp.name
-
-    # Continuación de la tabla en página 2
-    pdf.add_page()
-    pdf.set_font('Arial', 'B', 10); pdf.cell(0, 10, 'CONTINUACIÓN PROYECTO 25 AÑOS', 0, 1)
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(20, 8, 'Año', 1, 0, 'C', True); pdf.cell(50, 8, 'Gen. (kWh/año)', 1, 0, 'C', True)
-    pdf.cell(60, 8, 'Ahorro Anual (USD)', 1, 0, 'C', True); pdf.cell(60, 8, 'Acumulado (USD)', 1, 1, 'C', True)
-    
-    pdf.set_font('Arial', '', 9)
-    for row in data_tabla[13:]:
-        pdf.cell(20, 7, str(row['Año']), 1, 0, 'C')
-        pdf.cell(50, 7, row['Prod. kWh'], 1, 0, 'C')
-        pdf.cell(60, 7, row['Ahorro Año'], 1, 0, 'C')
-        pdf.cell(60, 7, row['Acumulado'], 1, 1, 'C')
 
     res = pdf.output(dest='S').encode('latin-1')
     os.remove(tmp_path)
     return res
 
-# --- RENDERIZADO EN APP ---
-st.subheader("📈 Proyección Financiera Detallada (25 Años)")
+# --- INTERFAZ STREAMLIT ---
+st.markdown("---")
+st.subheader("📊 Proyección de Flujo de Caja (25 Años)")
 st.table(pd.DataFrame(data_tabla))
 
-st.subheader("📊 Gráfico de Flujo de Caja")
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(años_eje, acumulados_eje, marker='o', label="Acumulado")
-ax.axhline(y=costo_total, color='r', linestyle='--', label="Inversión")
-ax.set_xlabel("Años"); ax.set_ylabel("USD"); ax.legend(); ax.grid(True)
-st.pyplot(fig)
+# Botón de descarga en el sidebar
+st.sidebar.markdown("---")
+st.sidebar.download_button(
+    label="📥 Descargar Propuesta PDF",
+    data=generar_pdf_final(),
+    file_name=f"Propuesta_Solar_{nombre_cliente}.pdf"
+)
 
-st.sidebar.download_button("📥 Descargar Reporte Completo", data=generar_pdf_completo(), file_name="Reporte_Solar_25Años.pdf")
+# Métricas rápidas
+m1, m2, m3 = st.columns(3)
+m1.metric("Payback Estimado", f"{año_payback} años")
+m2.metric("Ahorro Total (25 años)", f"${suma_fin:,.2f}")
+m3.metric("ROI (Veces la inversión)", f"{(suma_fin/costo_total):.2f}x")
