@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from fpdf import FPDF
-import tempfile
-import os
 
 # 1. Base de Datos Técnica Real
 ciudades_data = {
@@ -21,10 +19,11 @@ ciudades_data = {
 
 st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="wide")
 
+# Inicialización de estados para sincronización de costos
 if 'costo_kwp' not in st.session_state:
     st.session_state.costo_kwp = 825.0
 
-# --- SIDEBAR ---
+# --- SIDEBAR: DATOS DEL CLIENTE ---
 st.sidebar.header("📋 Datos de la Propuesta")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Cliente Ejemplo")
 nombre_proyecto = st.sidebar.text_input("Nombre del Proyecto", "Instalación Solar")
@@ -35,7 +34,7 @@ st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown(f"### Proyecto: {tipo_proyecto}")
 st.markdown("---")
 
-# 2. PARÁMETROS TÉCNICOS
+# 2. PARÁMETROS TÉCNICOS Y DE FACTURACIÓN
 with st.container():
     col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
@@ -44,7 +43,9 @@ with st.container():
     with col_input2:
         consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=300.0, step=10.0, min_value=1.0)
     with col_input3:
+        # NUEVO CAMPO: Pago de planilla mensual
         pago_planilla = st.number_input("💵 Pago Planilla Mensual (USD)", value=27.60, step=1.00, format="%.2f")
+        # Cálculo automático del costo por kWh
         costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
         st.info(f"Costo kWh: ${costo_kwh:.4f}")
     with col_input4:
@@ -52,36 +53,37 @@ with st.container():
     with col_input5:
         atenuacion_anual = st.number_input("📉 Aten. Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
+# Lógica técnica base
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
 
-# --- CONFIGURACIÓN DE INVERSIÓN ---
+# --- CONFIGURACIÓN DE INVERSIÓN VINCULADA ---
 st.subheader("💰 Configuración de Costos e Inversión")
 col_c1, col_c2 = st.columns(2)
 
 def update_from_kwp():
     st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
+
 def update_from_inv():
     st.session_state.costo_kwp = st.session_state.inv_total / pot_sug if pot_sug > 0 else 0
 
 with col_c1:
     st.number_input("Costo por kWp instalado (USD)", key="costo_kwp", on_change=update_from_kwp, step=10.0)
+
 with col_c2:
     if 'inv_total' not in st.session_state:
         st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
     st.number_input("Inversión Total del Proyecto (USD)", key="inv_total", on_change=update_from_inv, step=100.0)
 
-# 3. LÓGICA FINANCIERA
+# 3. LÓGICA FINANCIERA FINAL
 costo_planta_total = st.session_state.inv_total
 ahorro_tributario_anual = (costo_planta_total / 10) if tipo_proyecto == "Comercial" else 0.0
 gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
 # 4. CÁLCULO 25 AÑOS
 data_tabla = []
-años_list = []
-acumulados_list = []
 suma_fin = 0
 año_payback = None
 
@@ -92,10 +94,6 @@ for i in range(1, 26):
     beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
     total_anual = ahorro_en + beneficio_trib
     suma_fin += total_anual
-    
-    # Datos para el gráfico
-    años_list.append(i)
-    acumulados_list.append(suma_fin)
     
     if suma_fin >= costo_planta_total and año_payback is None:
         año_payback = i
@@ -155,31 +153,6 @@ def crear_pdf():
         pdf.cell(40, 7, d['Prod. (kWh/año)'], 1, 0, 'C')
         pdf.cell(45, 7, d['Ahorro Total Año'], 1, 0, 'C')
         pdf.cell(45, 7, d['Acumulado'], 1, 1, 'C')
-
-    # --- GENERACIÓN DEL GRÁFICO ---
-    pdf.ln(10)
-    plt.figure(figsize=(8, 4))
-    plt.plot(años_list, acumulados_list, marker='o', linestyle='-', color='#1f77b4', label='Flujo Acumulado')
-    plt.axhline(y=costo_planta_total, color='r', linestyle='--', label='Inversión Inicial')
-    plt.fill_between(años_list, acumulados_list, costo_planta_total, 
-                     where=(pd.Series(acumulados_list) >= costo_planta_total), 
-                     color='green', alpha=0.2, label='Ganancia Neta')
-    plt.title("Flujo de Caja Acumulado (25 Años)")
-    plt.xlabel("Año"); plt.ylabel("USD"); plt.grid(True, alpha=0.3); plt.legend()
-    
-    # Guardar gráfico temporalmente
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-        plt.savefig(tmpfile.name, format='png', dpi=150, bbox_inches='tight')
-        plot_path = tmpfile.name
-    
-    # Insertar en el PDF (verificando espacio)
-    if pdf.get_y() > 180: # Si queda poco espacio, pasar a nueva página
-        pdf.add_page()
-    pdf.image(plot_path, x=15, w=180)
-    
-    # Limpiar archivo temporal
-    plt.close()
-    os.remove(plot_path)
 
     return pdf.output(dest='S').encode('latin-1')
 
