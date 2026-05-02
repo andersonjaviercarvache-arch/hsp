@@ -102,14 +102,8 @@ def generar_pdf():
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     
-    # INSERCIÓN DEL LOGO ORIGINAL
-    # Intenta cargar 'logo.png'. Si no existe, usa texto como respaldo.
-    if os.path.exists("logo.png"):
-        pdf.image("logo.png", x=15, y=10, w=40)
-    else:
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(50, 10, 'Latitud Solar', 0, 0, 'L')
-    
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(50, 10, 'Latitud Solar', 0, 0, 'L')
     pdf.set_font('Arial', 'B', 9)
     pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'L')
     pdf.set_font('Arial', '', 8); pdf.set_x(65)
