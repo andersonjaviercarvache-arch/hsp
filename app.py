@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 from fpdf import FPDF
 import tempfile
 import os
 
-# 1. Base de Datos Técnica Real (Sustentada en bases de datos meteo)
+# 1. Base de Datos Técnica Real
 ciudades_data = {
     "Mes": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
     "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
@@ -34,7 +35,7 @@ vendedor = st.sidebar.text_input("Asesor Técnico", "Ing. Solar")
 st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown(f"### Proyecto: {tipo_proyecto}")
 
-# 2. PARÁMETROS TÉCNICOS (VISIBLES EN APP)
+# 2. PARÁMETROS TÉCNICOS
 with st.container():
     col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
@@ -51,7 +52,7 @@ with st.container():
     with col_input5:
         atenuacion_anual = st.number_input("📉 Aten. Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
-# Lógica Meteorológica (Influye en los cálculos, se muestra solo en App)
+# Lógica Meteorológica
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
@@ -81,7 +82,6 @@ with col_c2:
         st.session_state.inv_total = st.session_state.costo_kwp * pot_sug
     st.number_input("Inversión Total del Proyecto (USD)", key="inv_total", on_change=update_from_inv, step=100.0)
 
-# 3. LÓGICA FINANCIERA Y TABLA
 costo_planta_total = st.session_state.inv_total
 ahorro_tributario_anual = (costo_planta_total / 10) if tipo_proyecto == "Comercial" else 0.0
 
@@ -112,7 +112,7 @@ for i in range(1, 26):
         "Acumulado": f"${suma_fin:,.2f}"
     })
 
-# 5. RESULTADOS EN APP
+# --- VISUALIZACIÓN APP ---
 st.markdown("---")
 col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 col_res1.metric("Inversión Final", f"${costo_planta_total:,.2f}")
@@ -121,20 +121,20 @@ col_res3.metric("Ahorro 25 Años", f"${suma_fin:,.2f}")
 payback_text = f"{año_payback} años" if año_payback else "> 25 años"
 col_res4.metric("Payback", payback_text)
 
-st.dataframe(pd.DataFrame(data_tabla), height=450, use_container_width=True)
+st.dataframe(pd.DataFrame(data_tabla), height=400, use_container_width=True)
 
-# --- FUNCIÓN PDF (METEO ELIMINADO) ---
+# --- FUNCIÓN PDF ---
 def crear_pdf():
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
     
-    # Banner Principal
+    # Header
     pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
     pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 18)
     pdf.cell(0, 15, f'PROPUESTA COMERCIAL SOLAR', 0, 1, 'C')
     
-    # Resumen Ejecutivo (Sin Datos Meteo)
+    # Datos (Meteo Omitido)
     pdf.set_text_color(0, 0, 0); pdf.ln(25)
     pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'RESUMEN DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
@@ -142,20 +142,15 @@ def crear_pdf():
     pdf.cell(90, 7, f'Tipo: {tipo_proyecto}'); pdf.cell(90, 7, f'Asesor: {vendedor}', 0, 1)
     
     pdf.ln(5); pdf.set_fill_color(240, 240, 240); pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 8, 'PROYECCIÓN FINANCIERA', 0, 1, 'L', fill=True)
+    pdf.cell(0, 8, 'VIABILIDAD FINANCIERA', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 10)
     pdf.cell(90, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(90, 8, f'Tiempo de Recuperación: {payback_text}', 0, 1)
-    pdf.cell(90, 8, f'Potencia Instalada: {pot_sug:.2f} kWp'); pdf.cell(90, 8, f'Generación Estimada Año 1: {gen_anual_inicial:,.0f} kWh', 0, 1)
+    pdf.cell(90, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(90, 8, f'Generación Estimada Año 1: {gen_anual_inicial:,.0f} kWh', 0, 1)
     
-    # Tabla de Proyección
+    # Tabla
     pdf.ln(8); pdf.set_font('Arial', 'B', 9); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
-    
-    if tipo_proyecto == "Comercial":
-        widths = [10, 20, 30, 30, 30, 30, 30]
-        headers = ['Año', 'Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Total Año', 'Acumulado']
-    else:
-        widths = [15, 25, 45, 45, 50]
-        headers = ['Año', 'Deg.', 'Prod. kWh', 'Ahorro Año', 'Acumulado']
+    headers = ['Año', 'Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Total Año', 'Acumulado'] if tipo_proyecto == "Comercial" else ['Año', 'Deg.', 'Prod. kWh', 'Ahorro Año', 'Acumulado']
+    widths = [10, 15, 30, 32, 32, 32, 35] if tipo_proyecto == "Comercial" else [15, 25, 45, 45, 50]
 
     for i in range(len(headers)):
         pdf.cell(widths[i], 8, headers[i], 1, 0, 'C', True)
@@ -163,35 +158,49 @@ def crear_pdf():
     
     pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
     for d in data_tabla:
+        pdf.cell(widths[0], 7, str(d['Año']), 1, 0, 'C')
+        pdf.cell(widths[1], 7, d['Índice de Degradación'], 1, 0, 'C')
+        pdf.cell(widths[2], 7, d['Prod. (kWh/año)'], 1, 0, 'C')
         if tipo_proyecto == "Comercial":
-            pdf.cell(widths[0], 7, str(d['Año']), 1, 0, 'C')
-            pdf.cell(widths[1], 7, d['Índice de Degradación'], 1, 0, 'C')
-            pdf.cell(widths[2], 7, d['Prod. (kWh/año)'], 1, 0, 'C')
             pdf.cell(widths[3], 7, d['Ahorro Energía'], 1, 0, 'C')
             pdf.cell(widths[4], 7, d['Ahorro Trib.'], 1, 0, 'C')
             pdf.cell(widths[5], 7, d['Ahorro Total Año'], 1, 0, 'C')
             pdf.cell(widths[6], 7, d['Acumulado'], 1, 1, 'C')
         else:
-            pdf.cell(widths[0], 7, str(d['Año']), 1, 0, 'C')
-            pdf.cell(widths[1], 7, d['Índice de Degradación'], 1, 0, 'C')
-            pdf.cell(widths[2], 7, d['Prod. (kWh/año)'], 1, 0, 'C')
             pdf.cell(widths[3], 7, d['Ahorro Total Año'], 1, 0, 'C')
             pdf.cell(widths[4], 7, d['Acumulado'], 1, 1, 'C')
 
-    # Gráfico de flujo
-    plt.figure(figsize=(8, 4))
-    plt.plot(años_list, acumulados_list, marker='o', color='#1f77b4')
-    plt.axhline(y=costo_planta_total, color='r', linestyle='--')
-    plt.title("Retorno de Inversión Acumulado")
-    plt.grid(True, alpha=0.3)
+    # --- GRÁFICO MEJORADO ---
+    plt.style.use('seaborn-v0_8-muted')
+    fig, ax = plt.subplots(figsize=(10, 5))
+    
+    ax.plot(años_list, acumulados_list, marker='o', markersize=4, linewidth=2.5, color='#1f77b4', label='Ahorro Acumulado')
+    ax.axhline(y=costo_planta_total, color='#d62728', linestyle='--', linewidth=2, label='Línea de Inversión')
+    
+    # Sombreado de beneficio
+    ax.fill_between(años_list, acumulados_list, costo_planta_total, 
+                    where=(pd.Series(acumulados_list) >= costo_planta_total),
+                    interpolate=True, color='#2ca02c', alpha=0.2, label='Zona de Ganancia Neta')
+
+    ax.set_title("Proyección de Retorno de Inversión (Payback)", fontsize=14, fontweight='bold', pad=15)
+    ax.set_xlabel("Años de Operación", fontsize=11)
+    ax.set_ylabel("Dólares (USD)", fontsize=11)
+    ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(loc='upper left', frameon=True, shadow=True)
+    
+    plt.tight_layout()
     
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-        plt.savefig(tmpfile.name, format='png', dpi=150)
+        plt.savefig(tmpfile.name, format='png', dpi=200)
         plot_path = tmpfile.name
     
-    if pdf.get_y() > 180: pdf.add_page()
+    pdf.ln(10)
+    if pdf.get_y() > 170: pdf.add_page()
     pdf.image(plot_path, x=15, w=180)
     plt.close()
+    os.remove(plot_path)
+    
     return pdf.output(dest='S').encode('latin-1')
 
 st.sidebar.markdown("---")
