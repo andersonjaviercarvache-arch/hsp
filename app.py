@@ -24,7 +24,7 @@ st.set_page_config(page_title="HSP Ecuador - Análisis de Inversión", layout="w
 if 'costo_kwp' not in st.session_state:
     st.session_state.costo_kwp = 825.0
 
-# --- SIDEBAR: DATOS DEL CLIENTE ---
+# --- SIDEBAR ---
 st.sidebar.header("📋 Datos de la Propuesta")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Cliente Ejemplo")
 nombre_proyecto = st.sidebar.text_input("Nombre del Proyecto", "Instalación Solar")
@@ -35,7 +35,7 @@ st.title("☀️ Análisis de Retorno de Inversión Solar (Payback)")
 st.markdown(f"### Proyecto: {tipo_proyecto}")
 st.markdown("---")
 
-# 2. PARÁMETROS TÉCNICOS Y DE FACTURACIÓN (PARAMETRIZABLES)
+# 2. PARÁMETROS TÉCNICOS
 with st.container():
     col_input1, col_input2, col_input3, col_input4, col_input5 = st.columns(5)
     with col_input1:
@@ -48,13 +48,10 @@ with st.container():
         costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
         st.info(f"Costo kWh: ${costo_kwh:.4f}")
     with col_input4:
-        # Parametrizable: Degradación Año 1
         deg_año1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0, format="%.2f", step=0.1) / 100
     with col_input5:
-        # Parametrizable: Atenuación anual (Año 2 al 25)
         atenuacion_anual = st.number_input("📉 Aten. Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
-# Lógica técnica
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
 pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
@@ -89,18 +86,14 @@ suma_fin = 0
 año_payback = None
 
 for i in range(1, 26):
-    # Cálculo de rendimiento según parámetros
-    if i == 1:
-        rendimiento_pct = (1 - deg_año1)
-    else:
-        rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1))
-    
+    rendimiento_pct = (1 - deg_año1) * ((1 - atenuacion_anual)**(i-1)) if i > 1 else (1 - deg_año1)
     prod = gen_anual_inicial * rendimiento_pct
     ahorro_en = prod * costo_kwh
     beneficio_trib = ahorro_tributario_anual if i <= 10 else 0
     total_anual = ahorro_en + beneficio_trib
     suma_fin += total_anual
     
+    # Datos para el gráfico
     años_list.append(i)
     acumulados_list.append(suma_fin)
     
@@ -109,7 +102,7 @@ for i in range(1, 26):
 
     data_tabla.append({
         "Año": i,
-        "Eficiencia Panel": f"{(rendimiento_pct * 100):.2f}%", 
+        "Índice de Degradación": f"{-rendimiento_pct:.3f}", 
         "Prod. (kWh/año)": f"{prod:,.0f}",
         "Ahorro Energía": f"${ahorro_en:,.2f}",
         "Ahorro Trib.": f"${beneficio_trib:,.2f}",
@@ -136,61 +129,57 @@ def crear_pdf():
     pdf.add_page()
     pdf.set_margins(20, 20, 20)
     
-    # Header
     pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
     pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 18)
     pdf.cell(0, 15, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
     
-    # Datos Cliente
     pdf.set_text_color(0, 0, 0); pdf.ln(25)
     pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
     pdf.cell(95, 7, f'Cliente: {nombre_cliente}'); pdf.cell(95, 7, f'Ciudad: {ciudad_sel}', 0, 1)
     pdf.cell(95, 7, f'Proyecto: {nombre_proyecto}'); pdf.cell(95, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     
-    # Resumen Financiero
     pdf.ln(8); pdf.set_fill_color(240, 240, 240); pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 10)
     pdf.cell(95, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(95, 8, f'Retorno: {payback_text}', 0, 1)
     pdf.cell(95, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(95, 8, f'Planilla Mensual: ${pago_planilla:.2f}', 0, 1)
     
-    # Tabla Proyección
     pdf.ln(8); pdf.set_font('Arial', 'B', 10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
-    pdf.cell(15, 8, 'Año', 1, 0, 'C', True); pdf.cell(25, 8, 'Eficiencia', 1, 0, 'C', True); pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True); pdf.cell(45, 8, 'Ahorro Año', 1, 0, 'C', True); pdf.cell(45, 8, 'Acumulado', 1, 1, 'C', True)
+    pdf.cell(15, 8, 'Año', 1, 0, 'C', True); pdf.cell(25, 8, 'Ind. Deg.', 1, 0, 'C', True); pdf.cell(40, 8, 'Prod. kWh', 1, 0, 'C', True); pdf.cell(45, 8, 'Ahorro Año', 1, 0, 'C', True); pdf.cell(45, 8, 'Acumulado', 1, 1, 'C', True)
     
     pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 9)
     for d in data_tabla:
         pdf.cell(15, 7, str(d['Año']), 1, 0, 'C')
-        pdf.cell(25, 7, d['Eficiencia Panel'], 1, 0, 'C')
+        pdf.cell(25, 7, d['Índice de Degradación'], 1, 0, 'C')
         pdf.cell(40, 7, d['Prod. (kWh/año)'], 1, 0, 'C')
         pdf.cell(45, 7, d['Ahorro Total Año'], 1, 0, 'C')
         pdf.cell(45, 7, d['Acumulado'], 1, 1, 'C')
 
-    # --- GRÁFICO AL FINAL ---
+    # --- GENERACIÓN DEL GRÁFICO ---
     pdf.ln(10)
     plt.figure(figsize=(8, 4))
-    plt.plot(años_list, acumulados_list, marker='o', color='#1f77b4', label='Flujo Acumulado')
+    plt.plot(años_list, acumulados_list, marker='o', linestyle='-', color='#1f77b4', label='Flujo Acumulado')
     plt.axhline(y=costo_planta_total, color='r', linestyle='--', label='Inversión Inicial')
     plt.fill_between(años_list, acumulados_list, costo_planta_total, 
                      where=(pd.Series(acumulados_list) >= costo_planta_total), 
-                     color='green', alpha=0.2, label='Recuperación')
-    plt.title("Proyección Financiera a 25 Años")
-    plt.xlabel("Año"); plt.ylabel("USD"); plt.legend(); plt.grid(True, alpha=0.2)
+                     color='green', alpha=0.2, label='Ganancia Neta')
+    plt.title("Flujo de Caja Acumulado (25 Años)")
+    plt.xlabel("Año"); plt.ylabel("USD"); plt.grid(True, alpha=0.3); plt.legend()
     
+    # Guardar gráfico temporalmente
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
         plt.savefig(tmpfile.name, format='png', dpi=150, bbox_inches='tight')
         plot_path = tmpfile.name
     
-    if pdf.get_y() > 180: pdf.add_page()
+    # Insertar en el PDF (verificando espacio)
+    if pdf.get_y() > 180: # Si queda poco espacio, pasar a nueva página
+        pdf.add_page()
     pdf.image(plot_path, x=15, w=180)
+    
+    # Limpiar archivo temporal
     plt.close()
     os.remove(plot_path)
-
-    return pdf.output(dest='S').encode('latin-1')
-
-st.sidebar.markdown("---")
-st.sidebar.download_button(f"📥 Descargar Propuesta {tipo_proyecto}", data=crear_pdf(), file_name=f"Propuesta_{nombre_cliente.replace(' ', '_')}.pdf")
 
     return pdf.output(dest='S').encode('latin-1')
 
