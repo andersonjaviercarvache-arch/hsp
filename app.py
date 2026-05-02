@@ -52,10 +52,20 @@ with st.container():
     with col_input5:
         atenuacion_anual = st.number_input("📉 Aten. Anual (%)", value=0.55, format="%.2f", step=0.05) / 100
 
+# Lógica de Datos Meteorológicos
 temp_ciudad = ciudades_data[ciudad_sel]["temp"]
-pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 hsp_promedio_base = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
+pr_ajustado = 0.82 - ((max(0, temp_ciudad - 15)) * 0.0045)
 pot_sug = consumo_mensual / (hsp_promedio_base * pr_ajustado * 30.44)
+gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
+
+# --- NUEVA SECCIÓN: INFO METEOROLÓGICA ---
+with st.expander("🌍 Información Meteorológica y de Eficiencia - " + ciudad_sel, expanded=True):
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    m_col1.metric("HSP Promedio Anual", f"{hsp_promedio_base:.2f} h/día")
+    m_col2.metric("Temp. Promedio", f"{temp_ciudad}°C")
+    m_col3.metric("PR (Factor de Corrección)", f"{pr_ajustado:.2%}")
+    m_col4.metric("Prod. Est. Año 1", f"{gen_anual_inicial:,.0f} kWh")
 
 # --- CONFIGURACIÓN DE INVERSIÓN ---
 st.subheader("💰 Configuración de Costos e Inversión")
@@ -76,7 +86,6 @@ with col_c2:
 # 3. LÓGICA FINANCIERA
 costo_planta_total = st.session_state.inv_total
 ahorro_tributario_anual = (costo_planta_total / 10) if tipo_proyecto == "Comercial" else 0.0
-gen_anual_inicial = pot_sug * hsp_promedio_base * pr_ajustado * 365
 
 # 4. CÁLCULO 25 AÑOS
 data_tabla = []
@@ -128,25 +137,29 @@ def crear_pdf():
     pdf.add_page()
     pdf.set_margins(15, 20, 15)
     
+    # Encabezado
     pdf.set_fill_color(31, 119, 180); pdf.rect(0, 0, 210, 35, 'F')
     pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 18)
     pdf.cell(0, 15, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
     
+    # Datos del Proyecto y Clima
     pdf.set_text_color(0, 0, 0); pdf.ln(25)
-    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
+    pdf.set_font('Arial', 'B', 12); pdf.cell(0, 10, 'DATOS TÉCNICOS Y CLIMÁTICOS', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
     pdf.cell(90, 7, f'Cliente: {nombre_cliente}'); pdf.cell(90, 7, f'Ciudad: {ciudad_sel}', 0, 1)
-    pdf.cell(90, 7, f'Proyecto: {nombre_proyecto}'); pdf.cell(90, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
+    pdf.cell(90, 7, f'HSP Promedio: {hsp_promedio_base:.2f} h/día'); pdf.cell(90, 7, f'Temp. Promedio: {temp_ciudad}°C', 0, 1)
+    pdf.cell(90, 7, f'Performance Ratio (PR): {pr_ajustado:.2%}'); pdf.cell(90, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     
+    # Resumen Financiero
     pdf.ln(8); pdf.set_fill_color(240, 240, 240); pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 10)
-    pdf.cell(90, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(90, 8, f'Retorno: {payback_text}', 0, 1)
-    pdf.cell(90, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(90, 8, f'Planilla Mensual: ${pago_planilla:.2f}', 0, 1)
+    pdf.cell(90, 8, f'Inversión Total: ${costo_planta_total:,.2f}'); pdf.cell(90, 8, f'Retorno Estimado: {payback_text}', 0, 1)
+    pdf.cell(90, 8, f'Potencia: {pot_sug:.2f} kWp'); pdf.cell(90, 8, f'Generación Año 1: {gen_anual_inicial:,.0f} kWh/año', 0, 1)
     
+    # Tabla de Proyección
     pdf.ln(8); pdf.set_font('Arial', 'B', 9); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255)
     
-    # Definición dinámica de columnas
     if tipo_proyecto == "Comercial":
         widths = [10, 20, 30, 30, 30, 30, 30]
         headers = ['Año', 'Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Total Año', 'Acumulado']
@@ -175,7 +188,7 @@ def crear_pdf():
             pdf.cell(widths[3], 7, d['Ahorro Total Año'], 1, 0, 'C')
             pdf.cell(widths[4], 7, d['Acumulado'], 1, 1, 'C')
 
-    # --- GENERACIÓN DEL GRÁFICO ---
+    # Gráfico
     pdf.ln(10)
     plt.figure(figsize=(8, 4))
     plt.plot(años_list, acumulados_list, marker='o', linestyle='-', color='#1f77b4', label='Flujo Acumulado')
