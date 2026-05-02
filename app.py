@@ -94,7 +94,32 @@ for año in range(1, 26):
         "Ahorro Año": f"${total_año:,.2f}", "Acumulado": f"${balance_acumulado:,.2f}"
     })
 
+# Tabla en la App
+st.subheader("📊 Tabla de Proyección")
 st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
+
+# --- NUEVO: GRÁFICO EN LA APP ---
+st.subheader("📈 Análisis de Retorno de Inversión")
+plt.style.use('ggplot')
+fig_app, ax_app = plt.subplots(figsize=(10, 5))
+ax_app.plot(años, acumulados, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado')
+ax_app.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Inversión Inicial')
+ax_app.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) >= inv_final), 
+                interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
+ax_app.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) < inv_final), 
+                interpolate=True, color='red', alpha=0.1, label='Periodo de Recuperación')
+
+if payback_year:
+    ax_app.plot(payback_year, inv_final, marker='*', markersize=15, color='#f1c40f', label='Punto de Equilibrio')
+    ax_app.annotate(f'Año {payback_year}', xy=(payback_year, inv_final), xytext=(payback_year, inv_final*1.1),
+                    fontweight='bold', color='#2c3e50')
+
+ax_app.set_ylabel("Dólares (USD)")
+ax_app.set_xlabel("Años")
+ax_app.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+ax_app.legend(loc='upper left')
+st.pyplot(fig_app)
+
 
 # --- FUNCIÓN PDF ---
 def generar_pdf():
@@ -102,7 +127,6 @@ def generar_pdf():
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     
-    # Manejo del Logo
     if os.path.exists("Negro sobre blanco (1).png"):
         pdf.image("Negro sobre blanco (1).png", x=15, y=10, w=45)
     else:
@@ -150,36 +174,12 @@ def generar_pdf():
         pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
         pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
 
-    # --- MARGEN DE SEPARACIÓN ---
-    pdf.ln(15) # Añade un margen vertical de 15 unidades entre la tabla y el gráfico
-
-    # Gráfico Mejorado
-    plt.style.use('ggplot')
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(años, acumulados, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado')
-    ax.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Inversión Inicial')
-    
-    ax.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) >= inv_final), 
-                    interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
-    ax.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) < inv_final), 
-                    interpolate=True, color='red', alpha=0.1, label='Periodo de Retorno')
-    
-    if payback_year:
-        ax.plot(payback_year, inv_final, marker='*', markersize=15, color='#f1c40f', label='Retorno de Inversión')
-
-    ax.set_title("Evolución del Beneficio Económico (25 años)", fontsize=14, fontweight='bold', pad=15)
-    ax.set_ylabel("Dólares Acumulados (USD)")
-    ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
-    ax.legend(loc='upper left', fontsize=9)
+    pdf.ln(15)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
         plt.savefig(tmp.name, dpi=200, bbox_inches='tight'); plot_p = tmp.name
     
-    # Comprobar si el gráfico cabe en la página o requiere una nueva
-    if pdf.get_y() > 170: 
-        pdf.add_page()
-        pdf.ln(10)
-        
+    if pdf.get_y() > 170: pdf.add_page()
     pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
     return pdf.output(dest='S').encode('latin-1')
 
