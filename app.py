@@ -6,7 +6,7 @@ from fpdf import FPDF
 import tempfile
 import os
 
-# 1. Base de Datos Técnica Real (HSP y Temperatura por ciudad)
+# 1. Base de Datos Técnica Real
 ciudades_data = {
     "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
     "Durán": {"hsp": [4.08, 3.98, 4.35, 4.48, 4.28, 4.05, 4.40, 4.88, 5.10, 5.05, 4.90, 4.62], "temp": 27.8},
@@ -18,11 +18,10 @@ ciudades_data = {
 
 st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout="wide")
 
-# Inicialización de estados
 if 'costo_kwp' not in st.session_state:
     st.session_state.costo_kwp = 850.0
 
-# --- SIDEBAR (DATOS DEL CLIENTE) ---
+# --- SIDEBAR ---
 st.sidebar.header("📋 Información del Cliente")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Martillo Jara Angel Cristobal")
 n_proyecto = st.sidebar.text_input("Número de Proyecto", "P0000000010")
@@ -31,39 +30,36 @@ vendedor = st.sidebar.text_input("Asesor Comercial", "Ing. Solar")
 
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
 
-# --- BLOQUE 1: PARÁMETROS TÉCNICOS Y CONSUMO ---
+# --- BLOQUE 1: PARÁMETROS TÉCNICOS ---
 with st.container():
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         ciudad_sel = st.selectbox("📍 Ubicación", list(ciudades_data.keys()))
     with col2:
-        consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=1228.0, step=10.0)
+        consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=1228.0)
     with col3:
-        pago_planilla = st.number_input("💵 Planilla USD/mes", value=149.94, step=1.0)
+        pago_planilla = st.number_input("💵 Planilla USD/mes", value=149.94)
         costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
     with col4:
         deg_y1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0) / 100
     with col5:
         atenuacion = st.number_input("📉 Aten. Anual (%)", value=0.55) / 100
 
-# Cálculos de Ingeniería
 hsp_avg = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
 temp_prom = ciudades_data[ciudad_sel]["temp"]
-# PR ajustado por temperatura (Pérdida de eficiencia por calor)
 pr_calculado = 0.82 - (max(0, temp_prom - 15) * 0.0045)
 potencia_sug = consumo_mensual / (hsp_avg * pr_calculado * 30.44)
 generacion_y1 = potencia_sug * hsp_avg * pr_calculado * 365
 
-with st.expander("🔍 Ver Análisis Meteorológico y Técnico", expanded=True):
+with st.expander("🔍 Análisis Meteorológico y Técnico", expanded=True):
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("HSP Promedio", f"{hsp_avg:.2f} h/día")
-    m2.metric("Temp. Promedio", f"{temp_prom}°C")
+    m1.metric("Potencia Sugerida", f"{potencia_sug:.2f} kWp")
+    m2.metric("HSP Promedio", f"{hsp_avg:.2f} h/día")
     m3.metric("Eficiencia (PR)", f"{pr_calculado:.2%}")
     m4.metric("Costo kWh", f"${costo_kwh:.4f}")
 
 # --- BLOQUE 2: INVERSIÓN Y AHORRO TRIBUTARIO ---
 st.subheader("💰 Inversión y Beneficios")
-
 def sync_kwp(): st.session_state.inv_total = st.session_state.costo_kwp * potencia_sug
 def sync_inv(): st.session_state.costo_kwp = st.session_state.inv_total / potencia_sug if potencia_sug > 0 else 0
 
@@ -73,18 +69,14 @@ with c_inv1:
 with c_inv2:
     st.number_input("Costo por kWp (USD)", key="costo_kwp", on_change=sync_kwp)
 with c_inv3:
-    # Ahorro tributario: Depreciación acelerada o incentivos (10% de la inversión/año x 10 años)
     tasa_incentivo = 0.10 if tipo_proyecto == "Comercial" else 0.0
     st.info(f"Beneficio Tributario: {tasa_incentivo:.0%} anual")
 
 # --- BLOQUE 3: FLUJO DE CAJA ---
 inv_final = st.session_state.inv_total
 ahorro_trib_anual = inv_final * tasa_incentivo
-
-data_rows = []
-años, acumulados = [], []
-balance_acumulado = 0
-payback_year = None
+data_rows, años, acumulados = [], [], []
+balance_acumulado, payback_year = 0, None
 
 for año in range(1, 26):
     factor_deg = (1 - deg_y1) * ((1 - atenuacion)**(año-1)) if año > 1 else (1 - deg_y1)
@@ -93,73 +85,53 @@ for año in range(1, 26):
     beneficio_extra = ahorro_trib_anual if año <= 10 else 0
     total_año = ahorro_energetico + beneficio_extra
     balance_acumulado += total_año
+    if balance_acumulado >= inv_final and payback_year is None: payback_year = año
     
-    if balance_acumulado >= inv_final and payback_year is None:
-        payback_year = año
-        
-    años.append(año)
-    acumulados.append(balance_acumulado)
-    
+    años.append(año); acumulados.append(balance_acumulado)
     data_rows.append({
-        "Año": año,
-        "Ind. Deg.": f"-{factor_deg:.3f}",
-        "Prod. kWh": f"{prod_anual:,.0f}",
-        "Ahorro Energía": f"${ahorro_energetico:,.2f}",
-        "Ahorro Trib.": f"${beneficio_extra:,.2f}",
-        "Ahorro Año": f"${total_año:,.2f}",
-        "Acumulado": f"${balance_acumulado:,.2f}"
+        "Año": año, "Ind. Deg.": f"-{factor_deg:.3f}", "Prod. kWh": f"{prod_anual:,.0f}",
+        "Ahorro Energía": f"${ahorro_energetico:,.2f}", "Ahorro Trib.": f"${beneficio_extra:,.2f}",
+        "Ahorro Año": f"${total_año:,.2f}", "Acumulado": f"${balance_acumulado:,.2f}"
     })
 
 st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
 
-# --- FUNCIÓN GENERAR PDF (DISEÑO LATITUD SOLAR) ---
+# --- FUNCIÓN PDF ---
 def generar_pdf():
     pdf = FPDF()
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     
-    # Encabezado (Logo simulado y Datos)
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(50, 10, 'Latitud Solar', 0, 0, 'L')
     pdf.set_font('Arial', 'B', 9)
     pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'L')
-    pdf.set_font('Arial', '', 8)
-    pdf.set_x(65)
+    pdf.set_font('Arial', '', 8); pdf.set_x(65)
     pdf.cell(50, 5, 'RUC   0993403111001', 0, 0, 'L')
     pdf.cell(0, 5, 'TELEFONOS:  0969952794-0959032257', 0, 1, 'L')
     
-    # Título Propuesta
-    pdf.ln(10)
-    pdf.set_font('Arial', 'B', 16)
+    pdf.ln(10); pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
-    pdf.set_draw_color(31, 119, 180)
-    pdf.set_line_width(0.8)
+    pdf.set_draw_color(31, 119, 180); pdf.set_line_width(0.8)
     pdf.line(40, pdf.get_y(), 170, pdf.get_y())
     
-    # Datos del Proyecto
-    pdf.ln(12)
-    pdf.set_font('Arial', 'B', 10); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
+    pdf.ln(12); pdf.set_font('Arial', 'B', 10); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 9)
     pdf.cell(95, 6, f'Cliente: {nombre_cliente}'); pdf.cell(0, 6, f'Ciudad: {ciudad_sel}', 0, 1)
     pdf.cell(95, 6, f'Proyecto: {n_proyecto}'); pdf.cell(0, 6, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     
-    # Resumen Financiero
-    pdf.ln(8)
-    pdf.set_fill_color(240, 240, 240)
+    pdf.ln(8); pdf.set_fill_color(240, 240, 240)
     pdf.set_font('Arial', 'B', 10); pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 9)
-    pdf.ln(2)
+    pdf.set_font('Arial', '', 9); pdf.ln(2)
     retorno_texto = f"{payback_year} años" if payback_year else "> 25 años"
     pdf.cell(95, 6, f'Inversión Total: ${inv_final:,.2f}'); pdf.cell(0, 6, f'Retorno: {retorno_texto}', 0, 1)
-    pdf.cell(95, 6, f'Potencia: {potencia_sug:.2f} kWp'); pdf.cell(0, 6, f'Planilla Mensual: ${pago_planilla:,.2f}', 0, 1)
+    pdf.cell(95, 6, f'Potencia Sugerida: {potencia_sug:.2f} kWp'); pdf.cell(0, 6, f'Planilla Mensual: ${pago_planilla:,.2f}', 0, 1)
     
-    # Tabla (Basada en la imagen de referencia)
-    pdf.ln(10)
-    pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
+    pdf.ln(10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
+    pdf.set_draw_color(50, 50, 50); pdf.set_line_width(0.2)
     cols_w = [15, 25, 35, 35, 35, 40]
     headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Acumulado']
-    for i in range(len(headers)):
-        pdf.cell(cols_w[i], 8, headers[i], 1, 0, 'C', fill=True)
+    for i in range(len(headers)): pdf.cell(cols_w[i], 8, headers[i], 1, 0, 'C', fill=True)
     pdf.ln()
     
     pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
@@ -171,24 +143,14 @@ def generar_pdf():
         pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
         pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
 
-    # Gráfico Profesional
-    plt.style.use('seaborn-v0_8-muted')
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(años, acumulados, color='#1f77b4', marker='o', label='Beneficio Acumulado')
-    ax.axhline(y=inv_final, color='red', linestyle='--', label='Punto de Equilibrio')
-    ax.set_title("Proyección de Flujo de Caja")
-    ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
-    ax.legend()
-    
+    ax.plot(años, acumulados, color='#1f77b4', marker='o')
+    ax.axhline(y=inv_final, color='red', linestyle='--')
+    ax.set_title("Flujo de Caja Acumulado"); ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        plt.savefig(tmp.name, dpi=150, bbox_inches='tight')
-        plot_p = tmp.name
-    
+        plt.savefig(tmp.name, dpi=150, bbox_inches='tight'); plot_p = tmp.name
     if pdf.get_y() > 180: pdf.add_page()
-    pdf.image(plot_p, x=15, w=180)
-    plt.close()
-    
+    pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
     return pdf.output(dest='S').encode('latin-1')
 
-st.sidebar.markdown("---")
-st.sidebar.download_button("📥 Descargar Propuesta Comercial PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
+st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
