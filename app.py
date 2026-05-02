@@ -102,17 +102,20 @@ def generar_pdf():
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     
-    if os.path.exists("logo.png"):
-        pdf.image("logo.png", x=15, y=10, w=40)
+    # Manejo del Logo
+    if os.path.exists("Negro sobre blanco (1).png"):
+        pdf.image("Negro sobre blanco (1).png", x=15, y=10, w=45)
     else:
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(50, 10, 'Latitud Solar', 0, 0, 'L')
     
     pdf.set_font('Arial', 'B', 9)
-    pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'L')
-    pdf.set_font('Arial', '', 8); pdf.set_x(65)
-    pdf.cell(50, 5, 'RUC   0993403111001', 0, 0, 'L')
-    pdf.cell(0, 5, 'TELEFONOS:  0969952794-0959032257', 0, 1, 'L')
+    pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'R')
+    pdf.set_font('Arial', '', 8)
+    pdf.set_x(110)
+    pdf.cell(0, 5, 'RUC   0993403111001', 0, 1, 'R')
+    pdf.set_x(110)
+    pdf.cell(0, 5, 'TELEFONOS:  0969952794-0959032257', 0, 1, 'R')
     
     pdf.ln(10); pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
@@ -147,38 +150,36 @@ def generar_pdf():
         pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
         pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
 
-    # --- GENERACIÓN DE GRÁFICO MEJORADO ---
+    # --- MARGEN DE SEPARACIÓN ---
+    pdf.ln(15) # Añade un margen vertical de 15 unidades entre la tabla y el gráfico
+
+    # Gráfico Mejorado
     plt.style.use('ggplot')
     fig, ax = plt.subplots(figsize=(10, 5))
-    
-    # Líneas principales
     ax.plot(años, acumulados, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado')
     ax.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Inversión Inicial')
     
-    # Sombreado intuitivo
     ax.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) >= inv_final), 
                     interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
     ax.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) < inv_final), 
                     interpolate=True, color='red', alpha=0.1, label='Periodo de Retorno')
     
-    # Resaltar Punto de Retorno
     if payback_year:
         ax.plot(payback_year, inv_final, marker='*', markersize=15, color='#f1c40f', label='Retorno de Inversión')
-        ax.annotate(f'Recuperación en {payback_year} años', xy=(payback_year, inv_final), 
-                    xytext=(payback_year+1, inv_final*0.8),
-                    arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=5))
 
     ax.set_title("Evolución del Beneficio Económico (25 años)", fontsize=14, fontweight='bold', pad=15)
-    ax.set_xlabel("Años de operación", fontsize=10)
-    ax.set_ylabel("Dólares Acumulados (USD)", fontsize=10)
+    ax.set_ylabel("Dólares Acumulados (USD)")
     ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
-    ax.legend(loc='upper left', frameon=True, fontsize=9)
-    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.legend(loc='upper left', fontsize=9)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
         plt.savefig(tmp.name, dpi=200, bbox_inches='tight'); plot_p = tmp.name
     
-    if pdf.get_y() > 180: pdf.add_page()
+    # Comprobar si el gráfico cabe en la página o requiere una nueva
+    if pdf.get_y() > 170: 
+        pdf.add_page()
+        pdf.ln(10)
+        
     pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
     return pdf.output(dest='S').encode('latin-1')
 
