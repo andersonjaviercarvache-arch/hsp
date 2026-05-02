@@ -90,109 +90,97 @@ for año in range(1, 26):
     años.append(año); acumulados.append(balance_acumulado)
     data_rows.append({
         "Año": año, "Ind. Deg.": f"-{factor_deg:.3f}", "Prod. kWh": f"{prod_anual:,.0f}",
+        "Ahorro Energía": f"${ahorro_energetico:,.2f}", "Ahorro Trib.": f"${beneficio_extra:,.2f}",
         "Ahorro Año": f"${total_año:,.2f}", "Acumulado": f"${balance_acumulado:,.2f}"
     })
 
-# Interfaz App
+# Tabla en la App
 st.subheader("📊 Tabla de Proyección")
 st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
 
+# --- NUEVO: GRÁFICO EN LA APP ---
 st.subheader("📈 Análisis de Retorno de Inversión")
-fig_app, ax_app = plt.subplots(figsize=(10, 4))
-ax_app.plot(años, acumulados, color='#1f77b4', marker='o', linewidth=2)
-ax_app.axhline(y=inv_final, color='#e74c3c', linestyle='--')
+plt.style.use('ggplot')
+fig_app, ax_app = plt.subplots(figsize=(10, 5))
+ax_app.plot(años, acumulados, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado')
+ax_app.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Inversión Inicial')
+ax_app.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) >= inv_final), 
+                interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
+ax_app.fill_between(años, acumulados, inv_final, where=(pd.Series(acumulados) < inv_final), 
+                interpolate=True, color='red', alpha=0.1, label='Periodo de Recuperación')
+
+if payback_year:
+    ax_app.plot(payback_year, inv_final, marker='*', markersize=15, color='#f1c40f', label='Punto de Equilibrio')
+    ax_app.annotate(f'Año {payback_year}', xy=(payback_year, inv_final), xytext=(payback_year, inv_final*1.1),
+                    fontweight='bold', color='#2c3e50')
+
+ax_app.set_ylabel("Dólares (USD)")
+ax_app.set_xlabel("Años")
 ax_app.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+ax_app.legend(loc='upper left')
 st.pyplot(fig_app)
 
-# --- FUNCIÓN PDF ACTUALIZADA SEGÚN IMAGEN ---
+
+# --- FUNCIÓN PDF ---
 def generar_pdf():
     pdf = FPDF()
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     
-    # --- CABECERA ESTILO IMAGEN ---
     if os.path.exists("Negro sobre blanco (1).png"):
-        pdf.image("Negro sobre blanco (1).png", x=15, y=12, w=40)
+        pdf.image("Negro sobre blanco (1).png", x=15, y=10, w=45)
+    else:
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(50, 10, 'Latitud Solar', 0, 0, 'L')
     
-    pdf.set_font('Arial', 'B', 10)
-    pdf.set_y(15)
-    pdf.cell(0, 5, 'LATITUDSOLAR C.LTDA.', 0, 1, 'C')
-    pdf.ln(2)
     pdf.set_font('Arial', 'B', 9)
-    pdf.cell(50, 5, '', 0, 0) # Espaciador para el logo
-    pdf.cell(30, 5, 'RUC', 0, 0, 'R')
-    pdf.set_font('Arial', '', 9)
-    pdf.cell(40, 5, '0993403111001', 0, 0, 'L')
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(25, 5, 'TELEFONOS:', 0, 0, 'R')
-    pdf.set_font('Arial', '', 9)
-    pdf.cell(0, 5, '0969952794-0959032257', 0, 1, 'L')
+    pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'R')
+    pdf.set_font('Arial', '', 8)
+    pdf.set_x(110)
+    pdf.cell(0, 5, 'RUC   0993403111001', 0, 1, 'R')
+    pdf.set_x(110)
+    pdf.cell(0, 5, 'TELEFONOS:  0969952794-0959032257', 0, 1, 'R')
     
-    # Título Principal
-    pdf.ln(8)
-    pdf.set_font('Arial', 'B', 16)
+    pdf.ln(10); pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
-    # Línea azul decorativa
-    pdf.set_draw_color(31, 119, 180)
-    pdf.set_line_width(1)
-    pdf.line(30, pdf.get_y(), 180, pdf.get_y())
+    pdf.set_draw_color(31, 119, 180); pdf.set_line_width(0.8)
+    pdf.line(40, pdf.get_y(), 170, pdf.get_y())
     
-    # --- DATOS DEL PROYECTO ---
-    pdf.ln(12)
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 8, 'DATOS DEL PROYECTO', 0, 1, 'L')
-    pdf.set_font('Arial', '', 10)
-    pdf.cell(95, 7, f'Cliente: {nombre_cliente}', 0, 0)
-    pdf.cell(0, 7, f'Ciudad: {ciudad_sel}', 0, 1)
-    pdf.cell(95, 7, f'Proyecto: {n_proyecto}', 0, 0)
-    pdf.cell(0, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
+    pdf.ln(12); pdf.set_font('Arial', 'B', 10); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
+    pdf.set_font('Arial', '', 9)
+    pdf.cell(95, 6, f'Cliente: {nombre_cliente}'); pdf.cell(0, 6, f'Ciudad: {ciudad_sel}', 0, 1)
+    pdf.cell(95, 6, f'Proyecto: {n_proyecto}'); pdf.cell(0, 6, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     
-    # --- RESUMEN FINANCIERO ---
-    pdf.ln(8)
-    pdf.set_fill_color(240, 240, 240)
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 10)
+    pdf.ln(8); pdf.set_fill_color(240, 240, 240)
+    pdf.set_font('Arial', 'B', 10); pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
+    pdf.set_font('Arial', '', 9); pdf.ln(2)
     retorno_texto = f"{payback_year} años" if payback_year else "> 25 años"
-    pdf.ln(2)
-    pdf.cell(95, 7, f'Inversión Total: ${inv_final:,.2f}', 0, 0)
-    pdf.cell(0, 7, f'Retorno: {retorno_texto}', 0, 1)
-    pdf.cell(95, 7, f'Potencia: {potencia_sug:.2f} kWp', 0, 0)
-    pdf.cell(0, 7, f'Planilla Mensual: ${pago_planilla:,.2f}', 0, 1)
+    pdf.cell(95, 6, f'Inversión Total: ${inv_final:,.2f}'); pdf.cell(0, 6, f'Retorno: {retorno_texto}', 0, 1)
+    pdf.cell(95, 6, f'Potencia Sugerida: {potencia_sug:.2f} kWp'); pdf.cell(0, 6, f'Planilla Mensual: ${pago_planilla:,.2f}', 0, 1)
     
-    # --- TABLA ESTILO IMAGEN ---
-    pdf.ln(10)
-    pdf.set_fill_color(31, 119, 180)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font('Arial', 'B', 10)
-    
-    # Columnas: Año, Ind. Deg, Prod kWh, Ahorro Año, Acumulado
-    cols_w = [25, 35, 45, 40, 40]
-    headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro Año', 'Acumulado']
-    for i in range(len(headers)):
-        pdf.cell(cols_w[i], 10, headers[i], 1, 0, 'C', fill=True)
+    pdf.ln(10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
+    pdf.set_draw_color(50, 50, 50); pdf.set_line_width(0.2)
+    cols_w = [15, 25, 35, 35, 35, 40]
+    headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Acumulado']
+    for i in range(len(headers)): pdf.cell(cols_w[i], 8, headers[i], 1, 0, 'C', fill=True)
     pdf.ln()
     
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font('Arial', '', 9)
+    pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
     for row in data_rows:
-        pdf.cell(cols_w[0], 8, str(row['Año']), 1, 0, 'C')
-        pdf.cell(cols_w[1], 8, row['Ind. Deg.'], 1, 0, 'C')
-        pdf.cell(cols_w[2], 8, row['Prod. kWh'], 1, 0, 'C')
-        pdf.cell(cols_w[3], 8, row['Ahorro Año'], 1, 0, 'C')
-        pdf.cell(cols_w[4], 8, row['Acumulado'], 1, 1, 'C')
+        pdf.cell(cols_w[0], 7, str(row['Año']), 1, 0, 'C')
+        pdf.cell(cols_w[1], 7, row['Ind. Deg.'], 1, 0, 'C')
+        pdf.cell(cols_w[2], 7, row['Prod. kWh'], 1, 0, 'C')
+        pdf.cell(cols_w[3], 7, row['Ahorro Energía'], 1, 0, 'C')
+        pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
+        pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
 
-    # Gráfico al final
     pdf.ln(15)
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        plt.savefig(tmp.name, dpi=200, bbox_inches='tight')
-        plot_p = tmp.name
+        plt.savefig(tmp.name, dpi=200, bbox_inches='tight'); plot_p = tmp.name
     
-    if pdf.get_y() > 180: pdf.add_page()
-    pdf.image(plot_p, x=20, w=170)
-    plt.close()
-    os.remove(plot_p)
-    
+    if pdf.get_y() > 170: pdf.add_page()
+    pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
     return pdf.output(dest='S').encode('latin-1')
 
 st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
