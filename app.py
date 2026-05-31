@@ -78,7 +78,8 @@ ahorro_trib_anual = inv_final * tasa_incentivo
 data_rows, años, acumulados = [], [], []
 balance_acumulado, payback_year = 0, None
 
-for año in range(1, 26):
+# CAMBIO AQUÍ: range(1, 31) en lugar de range(1, 26) para 30 años
+for año in range(1, 31):
     factor_deg = (1 - deg_y1) * ((1 - atenuacion)**(año-1)) if año > 1 else (1 - deg_y1)
     prod_anual = generacion_y1 * factor_deg
     ahorro_energetico = prod_anual * costo_kwh
@@ -154,7 +155,8 @@ def generar_pdf():
     pdf.ln(8); pdf.set_fill_color(240, 240, 240)
     pdf.set_font('Arial', 'B', 10); pdf.cell(0, 8, 'RESUMEN FINANCIERO', 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 9); pdf.ln(2)
-    retorno_texto = f"{payback_year} años" if payback_year else "> 25 años"
+    # CAMBIO AQUÍ: de "> 25 años" a "> 30 años"
+    retorno_texto = f"{payback_year} años" if payback_year else "> 30 años"
     pdf.cell(95, 6, f'Inversión Total: ${inv_final:,.2f}'); pdf.cell(0, 6, f'Retorno: {retorno_texto}', 0, 1)
     pdf.cell(95, 6, f'Potencia Sugerida: {potencia_sug:.2f} kWp'); pdf.cell(0, 6, f'Planilla Mensual: ${pago_planilla:,.2f}', 0, 1)
     
@@ -167,6 +169,10 @@ def generar_pdf():
     
     pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
     for row in data_rows:
+        # Se añade control de salto de página manual para evitar que la tabla de 30 años se corte feo
+        if pdf.get_y() > 260:
+            pdf.add_page()
+            # Reimprimir encabezado si lo deseas, o simplemente continuar
         pdf.cell(cols_w[0], 7, str(row['Año']), 1, 0, 'C')
         pdf.cell(cols_w[1], 7, row['Ind. Deg.'], 1, 0, 'C')
         pdf.cell(cols_w[2], 7, row['Prod. kWh'], 1, 0, 'C')
