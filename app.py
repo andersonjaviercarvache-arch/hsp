@@ -181,6 +181,10 @@ st.pyplot(fig_app)
 
 # --- FUNCIÓN PDF ---
 def generar_pdf():
+    # Función de ayuda para asegurar que no falle FPDF con tildes o caracteres especiales
+    def to_latin1(texto):
+        return str(texto).encode('latin-1', 'replace').decode('latin-1')
+
     pdf = FPDF()
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
@@ -200,25 +204,24 @@ def generar_pdf():
     pdf.cell(0, 5, 'TELEFONOS:  0969952794-0959032257', 0, 1, 'R')
     
     pdf.ln(10); pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
+    pdf.cell(0, 10, to_latin1(f'PROPUESTA SOLAR - {tipo_proyecto.upper()}'), 0, 1, 'C')
     pdf.set_draw_color(31, 119, 180); pdf.set_line_width(0.8)
     pdf.line(40, pdf.get_y(), 170, pdf.get_y())
     
     pdf.ln(12); pdf.set_font('Arial', 'B', 10); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 9)
-    pdf.cell(95, 6, f'Cliente: {nombre_cliente}'); pdf.cell(0, 6, f'Ciudad: {ciudad_sel}', 0, 1)
-    pdf.cell(95, 6, f'Proyecto: {n_proyecto}'); pdf.cell(0, 6, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
+    pdf.cell(95, 6, to_latin1(f'Cliente: {nombre_cliente}')); pdf.cell(0, 6, to_latin1(f'Ciudad: {ciudad_sel}'), 0, 1)
+    pdf.cell(95, 6, to_latin1(f'Proyecto: {n_proyecto}')); pdf.cell(0, 6, to_latin1(f'Costo kWh: ${costo_kwh:.4f}'), 0, 1)
     
     pdf.ln(8); pdf.set_fill_color(240, 240, 240)
-    pdf.set_font('Arial', 'B', 10); pdf.cell(0, 8, 'RESUMEN FINANCIERO DE RECUPERACIÓN', 0, 1, 'L', fill=True)
+    pdf.set_font('Arial', 'B', 10); pdf.cell(0, 8, to_latin1('RESUMEN FINANCIERO DE RECUPERACIÓN'), 0, 1, 'L', fill=True)
     pdf.set_font('Arial', '', 9); pdf.ln(2)
-    pdf.cell(95, 6, f'Inversión Total: ${inv_final:,.2f}'); pdf.cell(0, 6, f'Retorno Estimado Real: {texto_retorno}', 0, 1)
-    pdf.cell(95, 6, f'Potencia Sugerida: {potencia_sug:.2f} kWp'); pdf.cell(0, 6, f'Esquema Beneficio: {porcentaje_distribucion:.2f}% por {años_beneficio} año(s)', 0, 1)
+    pdf.cell(95, 6, to_latin1(f'Inversión Total: ${inv_final:,.2f}')); pdf.cell(0, 6, to_latin1(f'Retorno Estimado Real: {texto_retorno}'), 0, 1)
+    pdf.cell(95, 6, to_latin1(f'Potencia Sugerida: {potencia_sug:.2f} kWp')); pdf.cell(0, 6, to_latin1(f'Esquema Beneficio: {porcentaje_distribucion:.2f}% por {años_beneficio} año(s)'), 0, 1)
     
     # --- NUEVO PÁRRAFO DINÁMICO EXPLICATIVO ---
     pdf.ln(4)
     pdf.set_font('Arial', 'I', 9)
-    
     if payback_exacto:
         texto_explicativo = (
             f"El retorno de inversión estimado de {texto_retorno} se logra como resultado directo de la "
@@ -231,30 +234,30 @@ def generar_pdf():
             "Con los parámetros de consumo e inversión actuales, el proyecto no alcanza su punto de "
             "equilibrio dentro de los primeros 30 años proyectados."
         )
-        
-    try:
-        pdf.multi_cell(0, 5, texto_explicativo)
-    except UnicodeEncodeError:
-        pdf.multi_cell(0, 5, texto_explicativo.encode('latin-1', 'replace').decode('latin-1'))
+    
+    # Aplicamos la protección de encoding al multiline para que no imprima un PDF en blanco
+    pdf.multi_cell(0, 5, to_latin1(texto_explicativo))
     # ------------------------------------------
 
     pdf.ln(8); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
     pdf.set_draw_color(50, 50, 50); pdf.set_line_width(0.2)
     cols_w = [15, 25, 35, 35, 35, 40]
     headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Acumulado']
-    for i in range(len(headers)): pdf.cell(cols_w[i], 8, headers[i], 1, 0, 'C', fill=True)
+    
+    for i in range(len(headers)): 
+        pdf.cell(cols_w[i], 8, to_latin1(headers[i]), 1, 0, 'C', fill=True)
     pdf.ln()
     
     pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
     for row in data_rows:
         if pdf.get_y() > 260:
             pdf.add_page()
-        pdf.cell(cols_w[0], 7, str(row['Año']), 1, 0, 'C')
-        pdf.cell(cols_w[1], 7, row['Ind. Deg.'], 1, 0, 'C')
-        pdf.cell(cols_w[2], 7, row['Prod. kWh'], 1, 0, 'C')
-        pdf.cell(cols_w[3], 7, row['Ahorro Energía'], 1, 0, 'C')
-        pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
-        pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
+        pdf.cell(cols_w[0], 7, to_latin1(str(row['Año'])), 1, 0, 'C')
+        pdf.cell(cols_w[1], 7, to_latin1(row['Ind. Deg.']), 1, 0, 'C')
+        pdf.cell(cols_w[2], 7, to_latin1(row['Prod. kWh']), 1, 0, 'C')
+        pdf.cell(cols_w[3], 7, to_latin1(row['Ahorro Energía']), 1, 0, 'C')
+        pdf.cell(cols_w[4], 7, to_latin1(row['Ahorro Trib.']), 1, 0, 'C')
+        pdf.cell(cols_w[5], 7, to_latin1(row['Acumulado']), 1, 1, 'C')
 
     pdf.ln(15)
 
@@ -263,6 +266,11 @@ def generar_pdf():
     
     if pdf.get_y() > 170: pdf.add_page()
     pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
-    return pdf.output(dest='S').encode('latin-1')
+    
+    # Manejo seguro para que streamlit compile el byte data y dispare la descarga
+    pdf_out = pdf.output(dest='S')
+    if isinstance(pdf_out, str):
+        return pdf_out.encode('latin-1', errors='replace')
+    return bytes(pdf_out)
 
 st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
