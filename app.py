@@ -94,7 +94,7 @@ for año in range(1, 31):
     # Aplicar el beneficio en USD de acuerdo a la cantidad de años seleccionada
     beneficio_extra = ahorro_trib_anual_usd if (año <= años_beneficio and tipo_proyecto == "Comercial") else 0
     
-    # SUMA DE AMBOS AHORROS: Lógica fundamental solicitada
+    # SUMA DE AMBOS AHORROS
     total_año = ahorro_energetico + beneficio_extra
     
     # Cálculo exacto fraccional del Retorno de Inversión
@@ -139,12 +139,11 @@ with st.container():
 st.subheader("📊 Tabla de Proyección")
 st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
 
-# --- GRÁFICO MEJORADO (CON BASE EN AÑO 0 E INTERSECCIÓN EXACTA) ---
+# --- GRÁFICO MEJORADO ---
 st.subheader("📈 Gráfico de Recuperación de Capital")
 plt.style.use('ggplot')
 fig_app, ax_app = plt.subplots(figsize=(10, 5))
 
-# Agregar el punto cero para que el gráfico inicie correctamente en el origen financiero
 plot_años = [0] + años
 plot_acumulados = [0] + acumulados
 
@@ -154,18 +153,15 @@ acumulados_ser = pd.Series(plot_acumulados)
 ax_app.plot(años_ser, acumulados_ser, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado (Energía + Tributario)')
 ax_app.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Línea de Inversión')
 
-# Áreas de color dinámicas
 ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser >= inv_final), 
                 interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
 ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser < inv_final), 
                 interpolate=True, color='red', alpha=0.1, label='Periodo de Recuperación')
 
-# Marcar la Ventana de incentivo fiscal seleccionada
 if tipo_proyecto == "Comercial" and años_beneficio > 0:
     ax_app.axvspan(0, años_beneficio, color='#f1c40f', alpha=0.12, 
                    label=f'Incentivo Tributario Activo ({años_beneficio} añ.)')
 
-# REFLEJO EXACTO DEL RETORNO EN EL GRÁFICO
 if payback_exacto:
     ax_app.plot(payback_exacto, inv_final, marker='*', markersize=15, color='#f1c40f', label=f'Punto de Equilibrio: {payback_exacto:.2f} años')
     ax_app.annotate(f'Retorno: {payback_exacto:.2f} años', xy=(payback_exacto, inv_final), xytext=(payback_exacto, inv_final * 1.15),
@@ -181,7 +177,6 @@ st.pyplot(fig_app)
 
 # --- FUNCIÓN PDF ---
 def generar_pdf():
-    # Función de ayuda para asegurar que no falle FPDF con tildes o caracteres especiales
     def to_latin1(texto):
         return str(texto).encode('latin-1', 'replace').decode('latin-1')
 
@@ -219,15 +214,15 @@ def generar_pdf():
     pdf.cell(95, 6, to_latin1(f'Inversión Total: ${inv_final:,.2f}')); pdf.cell(0, 6, to_latin1(f'Retorno Estimado Real: {texto_retorno}'), 0, 1)
     pdf.cell(95, 6, to_latin1(f'Potencia Sugerida: {potencia_sug:.2f} kWp')); pdf.cell(0, 6, to_latin1(f'Esquema Beneficio: {porcentaje_distribucion:.2f}% por {años_beneficio} año(s)'), 0, 1)
     
-    # --- NUEVO PÁRRAFO DINÁMICO EXPLICATIVO ---
+    # --- PÁRRAFO DINÁMICO EXPLICATIVO ACTUALIZADO ---
     pdf.ln(4)
     pdf.set_font('Arial', 'I', 9)
     if payback_exacto:
         texto_explicativo = (
-            f"El retorno de inversión estimado de {texto_retorno} se logra como resultado directo de la "
-            f"aplicación del beneficio tributario de depreciación acelerada a {años_beneficio} año(s), sumado "
-            f"al ahorro energético generado durante ese mismo periodo. A partir de este punto de recuperación, "
-            f"el sistema pasa a generar un saldo a favor totalmente neto para el cliente durante el resto de su vida útil."
+            f"El retorno de inversión será de {texto_retorno} como resultado de la sumatoria "
+            f"del ahorro anual energético y el ahorro anual tributario aplicado a {años_beneficio} año(s). "
+            f"A partir de este punto, el sistema pasa a generar un saldo a favor totalmente neto para el cliente "
+            f"durante el resto de su vida útil."
         )
     else:
         texto_explicativo = (
@@ -235,7 +230,6 @@ def generar_pdf():
             "equilibrio dentro de los primeros 30 años proyectados."
         )
     
-    # Aplicamos la protección de encoding al multiline para que no imprima un PDF en blanco
     pdf.multi_cell(0, 5, to_latin1(texto_explicativo))
     # ------------------------------------------
 
@@ -267,7 +261,6 @@ def generar_pdf():
     if pdf.get_y() > 170: pdf.add_page()
     pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
     
-    # Manejo seguro para que streamlit compile el byte data y dispare la descarga
     pdf_out = pdf.output(dest='S')
     if isinstance(pdf_out, str):
         return pdf_out.encode('latin-1', errors='replace')
