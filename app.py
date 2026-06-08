@@ -215,7 +215,30 @@ def generar_pdf():
     pdf.cell(95, 6, f'Inversión Total: ${inv_final:,.2f}'); pdf.cell(0, 6, f'Retorno Estimado Real: {texto_retorno}', 0, 1)
     pdf.cell(95, 6, f'Potencia Sugerida: {potencia_sug:.2f} kWp'); pdf.cell(0, 6, f'Esquema Beneficio: {porcentaje_distribucion:.2f}% por {años_beneficio} año(s)', 0, 1)
     
-    pdf.ln(10); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
+    # --- NUEVO PÁRRAFO DINÁMICO EXPLICATIVO ---
+    pdf.ln(4)
+    pdf.set_font('Arial', 'I', 9)
+    
+    if payback_exacto:
+        texto_explicativo = (
+            f"El retorno de inversión estimado de {texto_retorno} se logra como resultado directo de la "
+            f"aplicación del beneficio tributario de depreciación acelerada a {años_beneficio} año(s), sumado "
+            f"al ahorro energético generado durante ese mismo periodo. A partir de este punto de recuperación, "
+            f"el sistema pasa a generar un saldo a favor totalmente neto para el cliente durante el resto de su vida útil."
+        )
+    else:
+        texto_explicativo = (
+            "Con los parámetros de consumo e inversión actuales, el proyecto no alcanza su punto de "
+            "equilibrio dentro de los primeros 30 años proyectados."
+        )
+        
+    try:
+        pdf.multi_cell(0, 5, texto_explicativo)
+    except UnicodeEncodeError:
+        pdf.multi_cell(0, 5, texto_explicativo.encode('latin-1', 'replace').decode('latin-1'))
+    # ------------------------------------------
+
+    pdf.ln(8); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
     pdf.set_draw_color(50, 50, 50); pdf.set_line_width(0.2)
     cols_w = [15, 25, 35, 35, 35, 40]
     headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Acumulado']
