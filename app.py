@@ -190,3 +190,87 @@ def generar_pdf():
     return pdf.output(dest='S').encode('latin-1')
 
 st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+from fpdf import FPDF
+import tempfile
+import os
+
+# 1. Base de Datos Técnica Real
+ciudades_data = {
+    "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
+    "Durán": {"hsp": [4.08, 3.98, 4.35, 4.48, 4.28, 4.05, 4.40, 4.88, 5.10, 5.05, 4.90, 4.62], "temp": 27.8},
+    "Quito": {"hsp": [4.85, 4.62, 4.28, 4.02, 4.15, 4.65, 5.18, 5.42, 5.35, 4.88, 4.55, 4.68], "temp": 14.5},
+    "Cuenca": {"hsp": [4.45, 4.38, 4.25, 4.15, 3.85, 3.72, 3.95, 4.35, 4.62, 4.75, 4.82, 4.55], "temp": 15.0},
+    "Esmeraldas": {"hsp": [3.65, 3.82, 4.12, 4.25, 4.18, 3.85, 3.75, 4.05, 4.15, 4.08, 3.95, 3.72], "temp": 26.5},
+    "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
+}
+
+st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout="wide")
+
+if 'costo_kwp' not in st.session_state:
+    st.session_state.costo_kwp = 850.0
+
+# --- SIDEBAR ---
+st.sidebar.header("📋 Información del Cliente")
+nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Martillo Jara Angel Cristobal")
+n_proyecto = st.sidebar.text_input("Número de Proyecto", "P0000000010")
+tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"])
+
+# --- BLOQUE TÉCNICO ---
+col1, col2, col3 = st.columns(3)
+with col1: ciudad_sel = st.selectbox("📍 Ubicación", list(ciudades_data.keys()))
+with col2: consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=1228.0)
+with col3: pago_planilla = st.number_input("💵 Planilla USD/mes", value=149.94)
+
+costo_kwh = pago_planilla / consumo_mensual
+hsp_avg = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
+potencia_sug = consumo_mensual / (hsp_avg * 0.82 * 30.44)
+generacion_y1 = potencia_sug * hsp_avg * 0.82 * 365
+
+# --- INVERSIÓN Y BENEFICIOS ---
+st.subheader("💰 Inversión y Beneficios")
+inv_total = st.number_input("Inversión Total (USD)", value=50013.90)
+años_beneficio = st.number_input("Años a Aplicar el Beneficio Tributario", min_value=1, max_value=10, value=2, step=1)
+ahorro_trib_anual = (inv_total / años_beneficio) if tipo_proyecto == "Comercial" else 0
+
+# --- CÁLCULO DE FLUJO ---
+data_rows, balance_acumulado, payback_exacto = [], 0, None
+for año in range(1, 31):
+    ahorro_energetico = generacion_y1 * (0.995**(año-1)) * costo_kwh
+    beneficio_extra = ahorro_trib_anual if (año <= años_beneficio and tipo_proyecto == "Comercial") else 0
+    total_año = ahorro_energetico + beneficio_extra
+    
+    if payback_exacto is None and (balance_acumulado + total_año) >= inv_total:
+        payback_exacto = (año - 1) + (inv_total - balance_acumulado) / total_año
+    
+    balance_acumulado += total_año
+    data_rows.append({"Año": año, "Ahorro": total_año, "Acumulado": balance_acumulado})
+
+# --- FUNCIÓN PDF ---
+def generar_pdf():
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, 'PROPUESTA DE RETORNO DE INVERSIÓN', 0, 1, 'C')
+    
+    pdf.ln(10)
+    pdf.set_font('Arial', '', 11)
+    
+    # Texto dinámico solicitado
+    texto = (
+        f"El retorno de inversión estimado para su proyecto es de {payback_exacto:.1f} años. "
+        f"Este resultado es el fruto de la sinergia entre el ahorro energético generado y el "
+        f"beneficio tributario aplicado por la depreciación acelerada de la planta durante {años_beneficio} años. "
+        f"\n\nGracias a esta optimización financiera, el sistema no solo se paga en tiempo récord, "
+        f"sino que al finalizar este período, su empresa obtendrá un saldo a favor constante. "
+        f"A partir de este punto, el ahorro mensual se convierte en una ganancia neta directa que "
+        f"maximiza la rentabilidad operativa de su negocio durante el resto de la vida útil del sistema."
+    )
+    
+    pdf.multi_cell(0, 7, texto)
+    return pdf.output(dest='S').encode('latin-1')
+
+st.download_button("📥 Descargar Propuesta PDF Dinámica", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
