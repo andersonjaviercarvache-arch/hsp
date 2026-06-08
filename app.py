@@ -276,3 +276,21 @@ def generar_pdf():
     return bytes(pdf_out)
 
 st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
+# --- CUADRO DE TEXTO DESTACADO CON TU NUEVA EXPLICACIÓN ---
+    pdf.ln(6)
+    pdf.set_fill_color(235, 245, 255)
+    pdf.set_text_color(0, 50, 100)
+    pdf.set_font('Arial', 'I', 9)
+    
+    # Texto dinámico basado en tus nuevos datos
+    texto_explicativo = (
+        f"El retorno de inversión será de {texto_retorno}, derivado de la sumatoria del ahorro energético anual "
+        f"y el ahorro tributario. Al aplicar una depreciación acelerada del 50% anual durante 2 años sobre una "
+        f"inversión de ${inv_final:,.2f}, logramos recuperar el capital inicial en 1.4 años. "
+        f"A partir de este punto, el sistema entra en una fase de saldo a favor neto durante el resto de su "
+        f"vida útil de 30 años, transformando el ahorro en un flujo de caja positivo constante para su empresa."
+    )
+    
+    pdf.multi_cell(0, 5, to_latin1(texto_explicativo), border=0, align='C', fill=True)
+    pdf.set_text_color(0, 0, 0) # Reset color
+    # ----------------------------------------------------------
