@@ -214,9 +214,14 @@ def generar_pdf():
     pdf.cell(95, 6, to_latin1(f'Inversión Total: ${inv_final:,.2f}')); pdf.cell(0, 6, to_latin1(f'Retorno Estimado Real: {texto_retorno}'), 0, 1)
     pdf.cell(95, 6, to_latin1(f'Potencia Sugerida: {potencia_sug:.2f} kWp')); pdf.cell(0, 6, to_latin1(f'Esquema Beneficio: {porcentaje_distribucion:.2f}% por {años_beneficio} año(s)'), 0, 1)
     
-    # --- PÁRRAFO DINÁMICO EXPLICATIVO ACTUALIZADO ---
-    pdf.ln(4)
+    # --- CUADRO DE TEXTO DESTACADO DENTRO DEL PDF ---
+    pdf.ln(6)
+    
+    # Configuramos los colores del cuadro (Fondo azul claro, texto azul oscuro)
+    pdf.set_fill_color(235, 245, 255)
+    pdf.set_text_color(0, 50, 100)
     pdf.set_font('Arial', 'I', 9)
+    
     if payback_exacto:
         texto_explicativo = (
             f"El retorno de inversión será de {texto_retorno} como resultado de la sumatoria "
@@ -230,7 +235,11 @@ def generar_pdf():
             "equilibrio dentro de los primeros 30 años proyectados."
         )
     
-    pdf.multi_cell(0, 5, to_latin1(texto_explicativo))
+    # Esta línea imprime visualmente el texto como un bloque/cuadro de color en el PDF
+    pdf.multi_cell(0, 6, to_latin1(texto_explicativo), border=0, align='C', fill=True)
+    
+    # Restauramos los colores a negro y blanco para el resto del documento
+    pdf.set_text_color(0, 0, 0)
     # ------------------------------------------
 
     pdf.ln(8); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
