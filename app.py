@@ -94,7 +94,7 @@ for año in range(1, 31):
     # Aplicar el beneficio en USD de acuerdo a la cantidad de años seleccionada
     beneficio_extra = ahorro_trib_anual_usd if (año <= años_beneficio and tipo_proyecto == "Comercial") else 0
     
-    # SUMA DE AMBOS AHORROS
+    # SUMA DE AMBOS AHORROS: Lógica fundamental combinada
     total_año = ahorro_energetico + beneficio_extra
     
     # Cálculo exacto fraccional del Retorno de Inversión
@@ -139,11 +139,12 @@ with st.container():
 st.subheader("📊 Tabla de Proyección")
 st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
 
-# --- GRÁFICO MEJORADO ---
+# --- GRÁFICO MEJORADO (CON BASE EN AÑO 0 E INTERSECCIÓN EXACTA) ---
 st.subheader("📈 Gráfico de Recuperación de Capital")
 plt.style.use('ggplot')
 fig_app, ax_app = plt.subplots(figsize=(10, 5))
 
+# Agregar el punto cero para que el gráfico inicie correctamente en el origen financiero
 plot_años = [0] + años
 plot_acumulados = [0] + acumulados
 
@@ -153,15 +154,18 @@ acumulados_ser = pd.Series(plot_acumulados)
 ax_app.plot(años_ser, acumulados_ser, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado (Energía + Tributario)')
 ax_app.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Línea de Inversión')
 
+# Áreas de color dinámicas
 ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser >= inv_final), 
                 interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
 ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser < inv_final), 
                 interpolate=True, color='red', alpha=0.1, label='Periodo de Recuperación')
 
+# Marcar la Ventana de incentivo fiscal seleccionada
 if tipo_proyecto == "Comercial" and años_beneficio > 0:
     ax_app.axvspan(0, años_beneficio, color='#f1c40f', alpha=0.12, 
                    label=f'Incentivo Tributario Activo ({años_beneficio} añ.)')
 
+# REFLEJO EXACTO DEL RETORNO EN EL GRÁFICO
 if payback_exacto:
     ax_app.plot(payback_exacto, inv_final, marker='*', markersize=15, color='#f1c40f', label=f'Punto de Equilibrio: {payback_exacto:.2f} años')
     ax_app.annotate(f'Retorno: {payback_exacto:.2f} años', xy=(payback_exacto, inv_final), xytext=(payback_exacto, inv_final * 1.15),
@@ -177,120 +181,150 @@ st.pyplot(fig_app)
 
 # --- FUNCIÓN PDF ---
 def generar_pdf():
-    def to_latin1(texto):
-        return str(texto).encode('latin-1', 'replace').decode('latin-1')
-
     pdf = FPDF()
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     
+    # Encabezado corporativo original
     if os.path.exists("Negro sobre blanco (1).png"):
-        pdf.image("Negro sobre blanco (1).png", x=15, y=10, w=45)
-    else:
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(50, 10, 'Latitud Solar', 0, 0, 'L')
+        pdf.image("Negro sobre blanco (1).png", x=15, y=12, w=40)
+    
+    pdf.set_font('Arial', 'B', 10)
+    pdf.set_y(15)
+    pdf.cell(0, 5, 'LATITUDSOLAR C.LTDA.', 0, 1, 'C')
+    pdf.ln(2)
     
     pdf.set_font('Arial', 'B', 9)
-    pdf.cell(0, 5, 'LATITUD SOLAR C.LTDA.', 0, 1, 'R')
-    pdf.set_font('Arial', '', 8)
-    pdf.set_x(110)
-    pdf.cell(0, 5, 'RUC   0993403111001', 0, 1, 'R')
-    pdf.set_x(110)
-    pdf.cell(0, 5, 'TELEFONOS:  0969952794-0959032257', 0, 1, 'R')
-    
-    pdf.ln(10); pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, to_latin1(f'PROPUESTA SOLAR - {tipo_proyecto.upper()}'), 0, 1, 'C')
-    pdf.set_draw_color(31, 119, 180); pdf.set_line_width(0.8)
-    pdf.line(40, pdf.get_y(), 170, pdf.get_y())
-    
-    pdf.ln(12); pdf.set_font('Arial', 'B', 10); pdf.cell(0, 10, 'DATOS DEL PROYECTO', 0, 1, 'L')
+    pdf.cell(50, 5, '', 0, 0)  # Espaciador para el logo
+    pdf.cell(30, 5, 'RUC', 0, 0, 'R')
     pdf.set_font('Arial', '', 9)
-    pdf.cell(95, 6, to_latin1(f'Cliente: {nombre_cliente}')); pdf.cell(0, 6, to_latin1(f'Ciudad: {ciudad_sel}'), 0, 1)
-    pdf.cell(95, 6, to_latin1(f'Proyecto: {n_proyecto}')); pdf.cell(0, 6, to_latin1(f'Costo kWh: ${costo_kwh:.4f}'), 0, 1)
+    pdf.cell(40, 5, '0993403111001', 0, 0, 'L')
+    pdf.set_font('Arial', 'B', 9)
+    pdf.cell(25, 5, 'TELEFONOS:', 0, 0, 'R')
+    pdf.set_font('Arial', '', 9)
+    pdf.cell(0, 5, '0969952794-0959032257', 0, 1, 'L')
     
-    pdf.ln(8); pdf.set_fill_color(240, 240, 240)
-    pdf.set_font('Arial', 'B', 10); pdf.cell(0, 8, to_latin1('RESUMEN FINANCIERO DE RECUPERACIÓN'), 0, 1, 'L', fill=True)
-    pdf.set_font('Arial', '', 9); pdf.ln(2)
-    pdf.cell(95, 6, to_latin1(f'Inversión Total: ${inv_final:,.2f}')); pdf.cell(0, 6, to_latin1(f'Retorno Estimado Real: {texto_retorno}'), 0, 1)
-    pdf.cell(95, 6, to_latin1(f'Potencia Sugerida: {potencia_sug:.2f} kWp')); pdf.cell(0, 6, to_latin1(f'Esquema Beneficio: {porcentaje_distribucion:.2f}% por {años_beneficio} año(s)'), 0, 1)
+    # Título Principal Centrado con Línea Azul
+    pdf.ln(8)
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}', 0, 1, 'C')
+    pdf.set_draw_color(31, 119, 180)
+    pdf.set_line_width(1)
+    pdf.line(30, pdf.get_y(), 180, pdf.get_y())
     
-    # --- CUADRO DE TEXTO DESTACADO DENTRO DEL PDF ---
-    pdf.ln(6)
+    # --- DATOS DEL PROYECTO ---
+    pdf.ln(12)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'DATOS DEL PROYECTO', 0, 1, 'L')
+    pdf.set_font('Arial', '', 10)
+    pdf.cell(95, 7, f'Cliente: {nombre_cliente}', 0, 0)
+    pdf.cell(0, 7, f'Ciudad: {ciudad_sel}', 0, 1)
+    pdf.cell(95, 7, f'Proyecto: {n_proyecto}', 0, 0)
+    pdf.cell(0, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     
-    # Configuramos los colores del cuadro (Fondo azul claro, texto azul oscuro)
-    pdf.set_fill_color(235, 245, 255)
-    pdf.set_text_color(0, 50, 100)
-    pdf.set_font('Arial', 'I', 9)
+    # --- RESUMEN FINANCIERO DINÁMICO ---
+    pdf.ln(8)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, 'RESUMEN FINANCIERO DE RECUPERACIÓN', 0, 1, 'L', fill=True)
+    pdf.ln(2)
     
-    if payback_exacto:
-        texto_explicativo = (
-            f"El retorno de inversión será de {texto_retorno} como resultado de la sumatoria "
-            f"del ahorro anual energético y el ahorro anual tributario aplicado a {años_beneficio} año(s). "
-            f"A partir de este punto, el sistema pasa a generar un saldo a favor totalmente neto para el cliente "
-            f"durante el resto de su vida útil."
+    # Redacción del texto dinámico inteligente de retorno y saldo a favor
+    if tipo_proyecto == "Comercial":
+        explicacion_retorno = (
+            f"El retorno de inversión estimado para su proyecto es de solo {payback_exacto:.1f} años. "
+            f"Este extraordinario tiempo de recuperación no ocurre de manera aislada, sino como el resultado directo del "
+            f"beneficio tributario aplicado por la depreciación acelerada de la planta solar por {años_beneficio} años sumado al ahorro energético acumulado "
+            f"de estos mismos años.\n\n"
+            f"Al finalizar este período de amortización, la inyección constante de capital liberado de la planilla de energía eléctrica se consolidará "
+            f"como un saldo a favor directo y neto para el presupuesto de su empresa. Esto significa ganancias operativas constantes "
+            f"que maximizarán la rentabilidad de su negocio durante el resto de los 30 años de vida útil estimada de la planta."
         )
     else:
-        texto_explicativo = (
-            "Con los parámetros de consumo e inversión actuales, el proyecto no alcanza su punto de "
-            "equilibrio dentro de los primeros 30 años proyectados."
+        explicacion_retorno = (
+            f"El retorno de inversión estimado para su residencia es de {payback_exacto:.1f} años. "
+            f"Este resultado es el fruto de la sinergia y acumulación directa del ahorro por la autogeneración de energía. "
+            f"Al recuperar su capital, la reducción sustancial de su planilla eléctrica se traducirá en un saldo a favor constante "
+            f"dentro de su presupuesto mensual, maximizando la liquidez de su hogar por las próximas décadas."
         )
+        
+    pdf.set_font('Arial', '', 9.5)
+    pdf.multi_cell(0, 5.5, explicacion_retorno)
     
-    # Esta línea imprime visualmente el texto como un bloque/cuadro de color en el PDF
-    pdf.multi_cell(0, 6, to_latin1(texto_explicativo), border=0, align='C', fill=True)
-    
-    # Restauramos los colores a negro y blanco para el resto del documento
-    pdf.set_text_color(0, 0, 0)
-    # ------------------------------------------
-
-    pdf.ln(8); pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
+    # --- TABLA DE DATOS ---
+    pdf.ln(10)
+    pdf.set_fill_color(31, 119, 180)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Arial', 'B', 9)
     pdf.set_draw_color(50, 50, 50); pdf.set_line_width(0.2)
+    
     cols_w = [15, 25, 35, 35, 35, 40]
     headers = ['Año', 'Ind. Deg.', 'Prod. kWh', 'Ahorro En.', 'Ahorro Trib.', 'Acumulado']
-    
-    for i in range(len(headers)): 
-        pdf.cell(cols_w[i], 8, to_latin1(headers[i]), 1, 0, 'C', fill=True)
+    for i in range(len(headers)):
+        pdf.cell(cols_w[i], 8, headers[i], 1, 0, 'C', fill=True)
     pdf.ln()
     
     pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
     for row in data_rows:
         if pdf.get_y() > 260:
             pdf.add_page()
-        pdf.cell(cols_w[0], 7, to_latin1(str(row['Año'])), 1, 0, 'C')
-        pdf.cell(cols_w[1], 7, to_latin1(row['Ind. Deg.']), 1, 0, 'C')
-        pdf.cell(cols_w[2], 7, to_latin1(row['Prod. kWh']), 1, 0, 'C')
-        pdf.cell(cols_w[3], 7, to_latin1(row['Ahorro Energía']), 1, 0, 'C')
-        pdf.cell(cols_w[4], 7, to_latin1(row['Ahorro Trib.']), 1, 0, 'C')
-        pdf.cell(cols_w[5], 7, to_latin1(row['Acumulado']), 1, 1, 'C')
+            pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
+            for i in range(len(headers)):
+                pdf.cell(cols_w[i], 8, headers[i], 1, 0, 'C', fill=True)
+            pdf.ln()
+            pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8)
+            
+        pdf.cell(cols_w[0], 7, str(row['Año']), 1, 0, 'C')
+        pdf.cell(cols_w[1], 7, row['Ind. Deg.'], 1, 0, 'C')
+        pdf.cell(cols_w[2], 7, row['Prod. kWh'], 1, 0, 'C')
+        pdf.cell(cols_w[3], 7, row['Ahorro Energía'], 1, 0, 'C')
+        pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
+        pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
 
-    pdf.ln(15)
+    # --- SECCIÓN GRÁFICO (CON CONTROL DE ESPACIO PARA EL CONFLICTO EN LÍNEA 280) ---
+    pdf.ln(8)
+    
+    # Generar gráfico temporal idéntico al de la App para insertarlo
+    fig_pdf, ax_pdf = plt.subplots(figsize=(10, 5))
+    ax_pdf.plot(años_ser, acumulados_ser, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado Combinado')
+    ax_pdf.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Inversión Inicial')
+    
+    ax_pdf.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser >= inv_final), 
+                        interpolate=True, color='green', alpha=0.2)
+    ax_pdf.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser < inv_final), 
+                        interpolate=True, color='red', alpha=0.1)
 
+    if tipo_proyecto == "Comercial" and años_beneficio > 0:
+        ax_pdf.axvspan(0, años_beneficio, color='#f1c40f', alpha=0.12, 
+                       label=f'Incentivo Tributario Activo ({años_beneficio} añ.)')
+
+    if payback_exacto:
+        ax_pdf.plot(payback_exacto, inv_final, marker='*', markersize=15, color='#f1c40f')
+        ax_pdf.annotate(f'Retorno: {payback_exacto:.2f} años', xy=(payback_exacto, inv_final), xytext=(payback_exacto, inv_final * 1.15),
+                        fontweight='bold', color='#2c3e50', arrowprops=dict(facecolor='#2c3e50', shrink=0.08, width=1, headwidth=6))
+
+    ax_pdf.set_ylabel("Dólares (USD)")
+    ax_pdf.set_xlabel("Años")
+    ax_pdf.set_xlim(0, 30.5)
+    ax_pdf.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+    ax_pdf.legend(loc='upper left')
+    
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        plt.savefig(tmp.name, dpi=200, bbox_inches='tight'); plot_p = tmp.name
+        plt.savefig(tmp.name, dpi=200, bbox_inches='tight')
+        plot_p = tmp.name
     
-    if pdf.get_y() > 170: pdf.add_page()
-    pdf.image(plot_p, x=15, w=180); plt.close(); os.remove(plot_p)
+    # Salto de página preventivo para el gráfico si queda poco espacio útil
+    if pdf.get_y() > 160: 
+        pdf.add_page()
+        
+    pdf.image(plot_p, x=15, w=180)
+    plt.close(fig_pdf)
     
-    pdf_out = pdf.output(dest='S')
-    if isinstance(pdf_out, str):
-        return pdf_out.encode('latin-1', errors='replace')
-    return bytes(pdf_out)
+    try:
+        os.remove(plot_p)
+    except OSError:
+        pass
+        
+    return pdf.output(dest='S').encode('latin-1')
 
 st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
-# --- CUADRO DE TEXTO DESTACADO CON TU NUEVA EXPLICACIÓN ---
-    pdf.ln(6)
-    pdf.set_fill_color(235, 245, 255)
-    pdf.set_text_color(0, 50, 100)
-    pdf.set_font('Arial', 'I', 9)
-    
-    # Texto dinámico basado en tus nuevos datos
-    texto_explicativo = (
-        f"El retorno de inversión será de {texto_retorno}, derivado de la sumatoria del ahorro energético anual "
-        f"y el ahorro tributario. Al aplicar una depreciación acelerada del 50% anual durante 2 años sobre una "
-        f"inversión de ${inv_final:,.2f}, logramos recuperar el capital inicial en 1.4 años. "
-        f"A partir de este punto, el sistema entra en una fase de saldo a favor neto durante el resto de su "
-        f"vida útil de 30 años, transformando el ahorro en un flujo de caja positivo constante para su empresa."
-    )
-    
-    pdf.multi_cell(0, 5, to_latin1(texto_explicativo), border=0, align='C', fill=True)
-    pdf.set_text_color(0, 0, 0) # Reset color
-    # ----------------------------------------------------------
