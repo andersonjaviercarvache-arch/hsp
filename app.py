@@ -134,23 +134,40 @@ def _buscar_texto(patron, texto, flags=re.IGNORECASE):
 def extraer_datos_panel(texto):
     """Extrae parámetros técnicos de una ficha técnica de panel solar (best-effort, revisar siempre).
     Las fichas técnicas suelen listar varias variantes de potencia (ej. 605/610/615/620 W) para la misma
-    familia de panel; NOCT y coeficiente de temperatura son propios del material y no cambian entre variantes."""
-    noct = _buscar_numero(r"NOCT[^\d\-]{0,40}(\d{2,3}(?:[.,]\d+)?)\s*°?\s*C", texto)
+    familia de panel; NOCT y coeficiente de temperatura son propios del material y no cambian entre variantes.
+    Rango realista de potencia de panel: 300-700 Wp (fuera de este rango casi siempre es irradiancia de
+    referencia -800 o 1000 W/m²-, voltaje de sistema -1000/1500V-, u otro dato no relacionado)."""
+    RANGO_MIN, RANGO_MAX = 300, 700
+    noct = _buscar_numero(r"NOCT[^\d\-]{0,40}(\d{2,3}(?:[.,]\d+)?)(?:\s*±\s*\d+(?:[.,]\d+)?)?\s*°?\s*C", texto)
     coef_temp_pct = _buscar_numero(r"(?:Temperature\s*Coefficient\s*of\s*P(?:max|MAX)|Coeficiente\s*de\s*Temperatura)[^\d\-]{0,20}(-?\d{1,2}[.,]\d+)\s*%", texto)
 
-    # 1) Intento estricto: números seguidos de "W"/"Wp", excluyendo referencias de irradiancia (W/m2)
-    candidatos_w = re.findall(r"\b([2-8]\d{2}(?:[.,]\d+)?)\s*Wp?\b(?!\s*/\s*m)", texto, flags=re.IGNORECASE)
-    potencias_wp = sorted({float(v.replace(",", ".")) for v in candidatos_w})
+    candidatos = set()
 
-    # 2) Respaldo: buscar una fila de tabla con varios números de 3 dígitos cerca de "Power"/"Potencia"
-    if len(potencias_wp) < 2:
-        m = re.search(r"(?:Maximum Power|Peak Power|Potencia\s*(?:Nominal|M[aá]xima))([^\n]*\n?[^\n]*)", texto, flags=re.IGNORECASE)
-        if m:
-            extra = re.findall(r"\b([2-8]\d{2})\b", m.group(1))
-            potencias_wp = sorted({float(v) for v in extra}) or potencias_wp
+    # Estrategia A: números pegados a "W"/"Wp", excluyendo referencias de irradiancia (W/m²)
+    for v in re.findall(r"\b(\d{3}(?:[.,]\d+)?)\s*Wp?\b(?!\s*[/⁄]\s*m)", texto, flags=re.IGNORECASE):
+        candidatos.add(float(v.replace(",", ".")))
 
-    # Eficiencias (%) en rango típico de módulo (15-25%), en el orden en que aparecen en el texto
+    # Estrategia B: potencia embebida en el código de modelo (ej. "JAM72S30-605/MR", "CS7L-620MS")
+    for v in re.findall(r"-(\d{3})(?=[A-Za-z/]|\b)", texto):
+        candidatos.add(float(v))
+
+    # Estrategia C: varios números de 3 dígitos en la(s) línea(s) siguientes a "Maximum/Peak Power" o "Potencia"
+    m = re.search(r"(?:Maximum Power|Peak Power|Potencia\s*(?:Nominal|M[aá]xima))([^\n]*\n?[^\n]*\n?[^\n]*)", texto, flags=re.IGNORECASE)
+    if m:
+        for v in re.findall(r"\b(\d{3})\b", m.group(1)):
+            candidatos.add(float(v))
+
+    potencias_wp = sorted(v for v in candidatos if RANGO_MIN <= v <= RANGO_MAX)
+
+    # Eficiencias (%): primero busca número+"%" pegado; si no hay suficientes, busca en la ventana
+    # cerca de "Efficiency"/"Eficiencia" (tablas donde el "%" solo aparece en el encabezado de columna)
     eficiencias_pct = [float(v.replace(",", ".")) for v in re.findall(r"\b(1[5-9](?:[.,]\d+)?|2[0-5](?:[.,]\d+)?)\s*%", texto)]
+    if len(eficiencias_pct) != len(potencias_wp):
+        m_efi = re.search(r"(?:Module\s*Efficiency|Efficiency|Eficiencia)([^\n]*\n?[^\n]*\n?[^\n]*)", texto, flags=re.IGNORECASE)
+        if m_efi:
+            candidatos_efi = [float(v.replace(",", ".")) for v in re.findall(r"\b(1[5-9](?:[.,]\d+)?|2[0-5](?:[.,]\d+)?)\b", m_efi.group(1))]
+            if len(candidatos_efi) == len(potencias_wp):
+                eficiencias_pct = candidatos_efi
 
     return {
         "potencias_wp": potencias_wp,
