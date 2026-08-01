@@ -5,33 +5,88 @@ import matplotlib.ticker as mtick
 from fpdf import FPDF
 import tempfile
 import os
+import requests
 
-# 1. Base de Datos Técnica Real
+# --- 1. BASE DE DATOS DE RESPALDO (usada si NASA POWER no responde) ---
+# HSP: Atlas Solar del Ecuador (CONELEC/CIE, 2008) y estimaciones satelitales NREL/Global Solar Atlas.
+# Coordenadas: ubicación geográfica estándar de cada ciudad.
 ciudades_data = {
-    "Guayaquil": {"hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
-    "Durán": {"hsp": [4.08, 3.98, 4.35, 4.48, 4.28, 4.05, 4.40, 4.88, 5.10, 5.05, 4.90, 4.62], "temp": 27.8},
-    "Quito": {"hsp": [4.85, 4.62, 4.28, 4.02, 4.15, 4.65, 5.18, 5.42, 5.35, 4.88, 4.55, 4.68], "temp": 14.5},
-    "Cuenca": {"hsp": [4.45, 4.38, 4.25, 4.15, 3.85, 3.72, 3.95, 4.35, 4.62, 4.75, 4.82, 4.55], "temp": 15.0},
-    "Esmeraldas": {"hsp": [3.65, 3.82, 4.12, 4.25, 4.18, 3.85, 3.75, 4.05, 4.15, 4.08, 3.95, 3.72], "temp": 26.5},
-    "Manta": {"hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
+    "Guayaquil":  {"lat": -2.1894, "lon": -79.8891, "hsp": [4.12, 4.05, 4.38, 4.51, 4.32, 4.10, 4.45, 4.92, 5.15, 5.02, 4.85, 4.58], "temp": 27.5},
+    "Durán":      {"lat": -2.1710, "lon": -79.8285, "hsp": [4.08, 3.98, 4.35, 4.48, 4.28, 4.05, 4.40, 4.88, 5.10, 5.05, 4.90, 4.62], "temp": 27.8},
+    "Quito":      {"lat": -0.1807, "lon": -78.4678, "hsp": [4.85, 4.62, 4.28, 4.02, 4.15, 4.65, 5.18, 5.42, 5.35, 4.88, 4.55, 4.68], "temp": 14.5},
+    "Cuenca":     {"lat": -2.9006, "lon": -79.0045, "hsp": [4.45, 4.38, 4.25, 4.15, 3.85, 3.72, 3.95, 4.35, 4.62, 4.75, 4.82, 4.55], "temp": 15.0},
+    "Esmeraldas": {"lat":  0.9682, "lon": -79.6517, "hsp": [3.65, 3.82, 4.12, 4.25, 4.18, 3.85, 3.75, 4.05, 4.15, 4.08, 3.95, 3.72], "temp": 26.5},
+    "Manta":      {"lat": -0.9677, "lon": -80.7089, "hsp": [4.82, 4.95, 5.15, 5.35, 5.12, 4.85, 4.98, 5.45, 5.75, 5.62, 5.48, 5.15], "temp": 26.2}
 }
+
+MESES_ORDEN_NASA = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def obtener_datos_nasa_power(lat, lon):
+    """Consulta la climatología mensual multi-anual de NASA POWER (irradiancia y temperatura).
+    Retorna (hsp_mensual, temp_mensual, exito)."""
+    try:
+        url = "https://power.larc.nasa.gov/api/temporal/climatology/point"
+        params = {
+            "parameters": "ALLSKY_SFC_SW_DWN,T2M",
+            "community": "RE",
+            "longitude": lon,
+            "latitude": lat,
+            "format": "JSON"
+        }
+        resp = requests.get(url, params=params, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+        hsp_mensual = [data["properties"]["parameter"]["ALLSKY_SFC_SW_DWN"][m] for m in MESES_ORDEN_NASA]
+        temp_mensual = [data["properties"]["parameter"]["T2M"][m] for m in MESES_ORDEN_NASA]
+        return hsp_mensual, temp_mensual, True
+    except Exception:
+        return None, None, False
+
+
+def calcular_pr(temp_ambiente_prom, noct, coef_temp_pct, perdidas_sistema_pct, eficiencia_inversor_pct):
+    """Modelo NOCT (Nominal Operating Cell Temperature), estándar en PVWatts/NREL y Sandia:
+    T_celda = T_ambiente + (NOCT - 20), evaluado a irradiancia de referencia de 800 W/m2 (condición NOCT).
+    Luego se aplican pérdidas por temperatura, inversor y sistema (cableado, suciedad, mismatch, disponibilidad)."""
+    t_celda = temp_ambiente_prom + (noct - 20)
+    factor_temp = 1 + (coef_temp_pct / 100.0) * (t_celda - 25)
+    factor_temp = max(factor_temp, 0.5)  # salvaguarda ante valores extremos
+    pr = factor_temp * (eficiencia_inversor_pct / 100.0) * (1 - perdidas_sistema_pct / 100.0)
+    return pr, t_celda
+
 
 st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout="wide")
 
 if 'costo_kwp' not in st.session_state:
     st.session_state.costo_kwp = 850.0
+if 'consumo_mensual' not in st.session_state:
+    st.session_state.consumo_mensual = 1228.0
 
-# --- SIDEBAR ---
+# --- SIDEBAR: INFORMACIÓN DEL CLIENTE ---
 st.sidebar.header("📋 Información del Cliente")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Martillo Jara Angel Cristobal")
 n_proyecto = st.sidebar.text_input("Número de Proyecto", "P0000000010")
 tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"])
 vendedor = st.sidebar.text_input("Asesor Comercial", "Ing. Solar")
 
+# --- SIDEBAR: PARÁMETROS TÉCNICOS AVANZADOS (MODELO PR / NOCT) ---
+st.sidebar.header("⚙️ Parámetros Técnicos del Sistema (PR)")
+usar_tiempo_real = st.sidebar.checkbox("🌐 Usar meteorología en tiempo real (NASA POWER)", value=True,
+                                        help="Consulta climatología satelital multi-anual real por coordenadas. Si falla la conexión, se usan valores de referencia locales.")
+noct = st.sidebar.number_input("NOCT del panel (°C)", min_value=40.0, max_value=50.0, value=45.0, step=0.5,
+                                help="Temperatura Nominal de Operación de Celda. Típico 44-47°C según ficha técnica del fabricante.")
+coef_temp_pct = st.sidebar.number_input("Coef. Temperatura Potencia (%/°C)", min_value=-0.60, max_value=-0.20, value=-0.40, step=0.01,
+                                         help="Pérdida de potencia por cada °C sobre 25°C (condición STC). Típico -0.35% a -0.45%/°C en silicio cristalino.")
+eficiencia_inversor_pct = st.sidebar.number_input("Eficiencia del Inversor (%)", min_value=90.0, max_value=99.5, value=97.0, step=0.1)
+perdidas_sistema_pct = st.sidebar.number_input("Otras Pérdidas del Sistema (%)", min_value=0.0, max_value=25.0, value=9.0, step=0.5,
+                                                help="Suciedad/soiling, cableado DC-AC, mismatch entre paneles y disponibilidad. Rango típico 7-12%.")
+
+# --- SIDEBAR: PARÁMETROS - HOJA PERFIL DE CONSUMO ---
 st.sidebar.header("⚙️ Parámetros - Hoja Perfil de Consumo")
 pct_autosuficiencia = st.sidebar.slider(
     "% Autosuficiencia Solar (Cobertura)", min_value=0.0, max_value=100.0, value=95.0, step=0.5,
-    help="Porcentaje del consumo que cubrirá la planta solar. El resto (100 - este valor) se muestra como aporte de la red."
+    help="Porcentaje del consumo que cubrirá la planta solar. El resto se muestra como aporte de la red."
 )
 pct_aporte_red = 100.0 - pct_autosuficiencia
 
@@ -42,13 +97,40 @@ potencia_manual = st.sidebar.number_input(
 
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
 
+# --- BLOQUE: DATOS HISTÓRICOS DE CONSUMO (determina el consumo mensual sugerido) ---
+st.subheader("📊 Consumo Histórico del Cliente")
+st.caption("Ingresa los meses y consumos reales (ej. de planillas). El promedio se puede usar como Consumo Mensual, que es lo que determina la potencia sugerida de la planta.")
+
+if "tabla_historico" not in st.session_state:
+    st.session_state.tabla_historico = pd.DataFrame({
+        "Mes": ["Mes 1", "Mes 2", "Mes 3"],
+        "Consumo (kWh)": [737.0, 1044.0, 1228.0]
+    })
+
+historico_editado = st.data_editor(
+    st.session_state.tabla_historico, num_rows="dynamic", use_container_width=True, key="historico_consumo_editor"
+)
+meses_hist = historico_editado["Mes"].astype(str).tolist()
+valores_hist = pd.to_numeric(historico_editado["Consumo (kWh)"], errors="coerce").fillna(0).tolist()
+suma_hist = sum(valores_hist)
+promedio_hist = suma_hist / len(valores_hist) if valores_hist else 0
+
+h1, h2, h3 = st.columns([1, 1, 1.4])
+h1.metric("Σ Suma Total Ingresada", f"{suma_hist:,.0f} kWh")
+h2.metric("Promedio Mensual", f"{promedio_hist:,.0f} kWh")
+with h3:
+    st.write("")
+    if st.button("📌 Usar este promedio como Consumo Mensual (kWh/mes)", use_container_width=True):
+        st.session_state.consumo_mensual = round(promedio_hist, 2)
+        st.rerun()
+
 # --- BLOQUE 1: PARÁMETROS TÉCNICOS ---
 with st.container():
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         ciudad_sel = st.selectbox("📍 Ubicación", list(ciudades_data.keys()))
     with col2:
-        consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", value=1228.0)
+        consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", key="consumo_mensual")
     with col3:
         pago_planilla = st.number_input("💵 Planilla USD/mes", value=149.94)
         costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
@@ -57,9 +139,26 @@ with st.container():
     with col5:
         atenuacion = st.number_input("📉 Aten. Anual (%)", value=0.55) / 100
 
-hsp_avg = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
-temp_prom = ciudades_data[ciudad_sel]["temp"]
-pr_calculado = 0.82 - (max(0, temp_prom - 15) * 0.0045)
+# --- OBTENCIÓN DE DATOS METEOROLÓGICOS (NASA POWER en vivo, o respaldo local) ---
+if usar_tiempo_real:
+    lat_sel = ciudades_data[ciudad_sel]["lat"]
+    lon_sel = ciudades_data[ciudad_sel]["lon"]
+    hsp_mensual_nasa, temp_mensual_nasa, exito_nasa = obtener_datos_nasa_power(lat_sel, lon_sel)
+    if exito_nasa:
+        hsp_avg = sum(hsp_mensual_nasa) / 12
+        temp_prom = sum(temp_mensual_nasa) / 12
+        fuente_meteo = "NASA POWER — climatología satelital multi-anual (en vivo)"
+    else:
+        hsp_avg = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
+        temp_prom = ciudades_data[ciudad_sel]["temp"]
+        fuente_meteo = "Valores de referencia locales (sin conexión a NASA POWER)"
+        st.sidebar.warning("⚠️ No se pudo conectar con NASA POWER. Usando valores de referencia locales.")
+else:
+    hsp_avg = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
+    temp_prom = ciudades_data[ciudad_sel]["temp"]
+    fuente_meteo = "Valores de referencia locales (Atlas Solar Ecuador / estimación)"
+
+pr_calculado, temp_celda = calcular_pr(temp_prom, noct, coef_temp_pct, perdidas_sistema_pct, eficiencia_inversor_pct)
 potencia_sug = consumo_mensual / (hsp_avg * pr_calculado * 30.44)
 
 # Potencia final: usa la manual si fue ingresada (> 0), si no, la sugerida
@@ -67,28 +166,15 @@ potencia_final = potencia_manual if potencia_manual > 0 else potencia_sug
 generacion_y1 = potencia_final * hsp_avg * pr_calculado * 365
 
 with st.expander("🔍 Análisis Meteorológico y Técnico", expanded=True):
+    st.caption(f"Fuente de datos meteorológicos: **{fuente_meteo}**")
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Potencia Sugerida", f"{potencia_sug:.2f} kWp")
     m2.metric("Potencia Instalada (final)", f"{potencia_final:.2f} kWp",
                delta="Override manual" if potencia_manual > 0 else None)
     m3.metric("HSP Promedio", f"{hsp_avg:.2f} h/día")
-    m4.metric("Eficiencia (PR)", f"{pr_calculado:.2%}")
-    m5.metric("Costo kWh", f"${costo_kwh:.4f}")
-
-# --- BLOQUE: DATOS HISTÓRICOS DE CONSUMO (para la hoja de Perfil de Consumo) ---
-st.subheader("📊 Consumo Histórico (Hoja: Perfil de Consumo Energético)")
-st.caption("Edita esta tabla con los meses y consumos reales del cliente. Se usa para el gráfico histórico de la nueva hoja del PDF.")
-if "tabla_historico" not in st.session_state:
-    st.session_state.tabla_historico = pd.DataFrame({
-        "Mes": ["Mes 1", "Mes 2", "Mes 3"],
-        "Consumo (kWh)": [round(consumo_mensual * 0.6, 0), round(consumo_mensual * 0.85, 0), round(consumo_mensual, 0)]
-    })
-historico_editado = st.data_editor(
-    st.session_state.tabla_historico, num_rows="dynamic", use_container_width=True, key="historico_consumo_editor"
-)
-meses_hist = historico_editado["Mes"].astype(str).tolist()
-valores_hist = pd.to_numeric(historico_editado["Consumo (kWh)"], errors="coerce").fillna(0).tolist()
-promedio_hist = sum(valores_hist) / len(valores_hist) if valores_hist else 0
+    m4.metric("Temp. Celda Estimada", f"{temp_celda:.1f} °C")
+    m5.metric("PR (Performance Ratio)", f"{pr_calculado:.2%}")
+    st.metric("Costo kWh", f"${costo_kwh:.4f}")
 
 # --- BLOQUE 2: INVERSIÓN Y AHORRO TRIBUTARIO ---
 st.subheader("💰 Inversión y Beneficios")
@@ -124,13 +210,9 @@ for año in range(1, 31):
     producciones_anuales.append(prod_anual)
     ahorro_energetico = prod_anual * costo_kwh
 
-    # Aplicar el beneficio en USD de acuerdo a la cantidad de años seleccionada
     beneficio_extra = ahorro_trib_anual_usd if (año <= años_beneficio and tipo_proyecto == "Comercial") else 0
-
-    # SUMA DE AMBOS AHORROS: Lógica fundamental combinada
     total_año = ahorro_energetico + beneficio_extra
 
-    # Cálculo exacto fraccional del Retorno de Inversión
     if payback_exacto is None and (balance_acumulado + total_año) >= inv_final:
         remand_por_recuperar = inv_final - balance_acumulado
         payback_exacto = (año - 1) + (remand_por_recuperar / total_año)
@@ -145,7 +227,6 @@ for año in range(1, 31):
         "Ahorro Año": f"${total_año:,.2f}", "Acumulado": f"${balance_acumulado:,.2f}"
     })
 
-# Tarifa nivelada (LCOE simplificado): Inversión Total / Energía total generada en 30 años
 energia_total_30_años = sum(producciones_anuales)
 tarifa_nivelada = (inv_final / energia_total_30_años) if energia_total_30_años > 0 else 0
 
@@ -160,7 +241,6 @@ with st.container():
     r1.metric("Ahorro Año 1 (Suma de Ambos)", f"${(ahorro_en_y1 + benef_trib_y1):,.2f}")
     r2.metric("Inversión a Recuperar", f"${inv_final:,.2f}")
 
-    # Muestra el resultado dinámico exacto de cuándo se recuperará la inversión
     if payback_exacto:
         if payback_exacto < 1:
             meses = round(payback_exacto * 12)
@@ -176,7 +256,7 @@ with st.container():
 st.subheader("📊 Tabla de Proyección")
 st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
 
-# --- GRÁFICO MEJORADO (CON BASE EN AÑO 0 E INTERSECCIÓN EXACTA) ---
+# --- GRÁFICO MEJORADO ---
 st.subheader("📈 Gráfico de Recuperación de Capital")
 plt.style.use('ggplot')
 fig_app, ax_app = plt.subplots(figsize=(10, 5))
@@ -321,7 +401,6 @@ def agregar_pagina_perfil_consumo(pdf):
 
     archivos_temp = []
 
-    # --- SECCIÓN 1: DISTRIBUCIÓN Y CAPACIDAD DE GENERACIÓN ---
     dibujar_titulo_seccion(pdf, '1. DISTRIBUCIÓN Y CAPACIDAD DE GENERACIÓN')
     y_seccion1 = pdf.get_y()
 
@@ -361,7 +440,6 @@ def agregar_pagina_perfil_consumo(pdf):
     pdf.ln(12)
     pdf.set_text_color(0, 0, 0)
 
-    # --- SECCIÓN 2: IMPACTO ECONÓMICO Y REDUCCIÓN TARIFARIA ---
     dibujar_titulo_seccion(pdf, '2. IMPACTO ECONÓMICO Y REDUCCIÓN TARIFARIA')
     y_seccion2 = pdf.get_y()
 
@@ -412,16 +490,13 @@ def agregar_pagina_perfil_consumo(pdf):
 def generar_pdf():
     pdf = FPDF()
 
-    # NUEVA HOJA: Perfil de Consumo Energético (se agrega primero)
     agregar_pagina_perfil_consumo(pdf)
 
-    # HOJA EXISTENTE: Propuesta financiera
     pdf.add_page()
     pdf.set_margins(15, 15, 15)
     agregar_encabezado(pdf)
     agregar_titulo_principal(pdf, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}')
 
-    # --- DATOS DEL PROYECTO ---
     pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 8, 'DATOS DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
@@ -431,7 +506,6 @@ def generar_pdf():
     pdf.cell(0, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
     pdf.cell(95, 7, f'Potencia Instalada: {potencia_final:.2f} kWp', 0, 1)
 
-    # --- RESUMEN FINANCIERO DINÁMICO ---
     pdf.ln(8)
     pdf.set_fill_color(240, 240, 240)
     pdf.set_font('Arial', 'B', 11)
@@ -459,7 +533,6 @@ def generar_pdf():
     pdf.set_font('Arial', '', 9.5)
     pdf.multi_cell(0, 5.5, explicacion_retorno)
 
-    # --- TABLA DE DATOS ---
     pdf.ln(10)
     pdf.set_fill_color(31, 119, 180)
     pdf.set_text_color(255, 255, 255)
@@ -489,7 +562,6 @@ def generar_pdf():
         pdf.cell(cols_w[4], 7, row['Ahorro Trib.'], 1, 0, 'C')
         pdf.cell(cols_w[5], 7, row['Acumulado'], 1, 1, 'C')
 
-    # --- SECCIÓN GRÁFICO ---
     pdf.ln(8)
 
     fig_pdf, ax_pdf = plt.subplots(figsize=(10, 5))
