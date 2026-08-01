@@ -119,23 +119,34 @@ def _buscar_texto(patron, texto, flags=re.IGNORECASE):
     return m.group(1).strip()
 
 
-def _extraer_valor_pagar(texto):
-    """Busca el monto a pagar probando varias frases típicas de facturas ecuatorianas.
-    Usa la ÚLTIMA coincidencia de cada patrón (el total final suele ir después de los subtotales/impuestos).
-    Si ninguna frase coincide, cae a buscar el último monto con símbolo $ del documento."""
+def _extraer_monto_energia(texto):
+    """Extrae el monto que corresponde SOLO al consumo de energía (excluye alumbrado público,
+    valores pendientes, intereses, bomberos, IVA, etc.). Busca la(s) línea(s) de 'Energía Activa',
+    'Energía Reactiva' y 'Demanda Facturable' (estas últimas dos típicas en tarifas comerciales/
+    industriales) y suma el último número de cada línea, que corresponde a la columna Monto ($)."""
+    patron_lineas = r"(?:Energ[íi]a\s*Activa[^\n]*|Energ[íi]a\s*Reactiva[^\n]*|Demanda\s*Facturable[^\n]*)"
+    lineas = re.findall(patron_lineas, texto, flags=re.IGNORECASE)
+    montos = []
+    for linea in lineas:
+        numeros = re.findall(r"\d+(?:[.,]\d+)?", linea)
+        if numeros:
+            montos.append(float(numeros[-1].replace(",", ".")))
+    return round(sum(montos), 2) if montos else None
+
+
+def _extraer_valor_total_respaldo(texto):
+    """Respaldo si no se pudo aislar el monto de energía: usa el Valor/Total general de la factura."""
     patrones = [
         r"(?:VALOR\s*A\s*PAGAR|VALOR\s*TOTAL\s*A\s*PAGAR|VALOR\s*TOTAL)[^\d]{0,20}(\d[\d.,]*\d|\d)",
-        r"(?:TOTAL\s*A\s*PAGAR|TOTAL\s*PLANILLA|TOTAL\s*FACTURA|TOTAL\s*GENERAL|TOTAL\s*USD|IMPORTE\s*A\s*PAGAR|PAGO\s*TOTAL|TOTAL\s*DEL?\s*CONSUMO)[^\d]{0,20}(\d[\d.,]*\d|\d)",
+        r"(?:TOTAL\s*A\s*PAGAR|TOTAL\s*PLANILLA|TOTAL\s*FACTURA|TOTAL\s*GENERAL|TOTAL\s*USD|IMPORTE\s*A\s*PAGAR|PAGO\s*TOTAL)[^\d]{0,20}(\d[\d.,]*\d|\d)",
     ]
     for patron in patrones:
         coincidencias = re.findall(patron, texto, flags=re.IGNORECASE)
         if coincidencias:
-            valor = coincidencias[-1].replace(",", ".")
             try:
-                return float(valor)
+                return float(coincidencias[-1].replace(",", "."))
             except ValueError:
                 pass
-    # Respaldo: último monto con símbolo $ y 2 decimales en todo el documento
     coincidencias_dolar = re.findall(r"\$\s*(\d[\d.,]*\d|\d)", texto)
     if coincidencias_dolar:
         try:
@@ -146,12 +157,41 @@ def _extraer_valor_pagar(texto):
 
 
 def extraer_datos_planilla(texto):
-    """Extrae datos de una planilla eléctrica ecuatoriana (CNEL u otra), best-effort."""
+    """Extrae datos de una planilla eléctrica ecuatoriana (CNEL u otra), best-effort.
+    Nota: en varias plantillas de CNEL, el extractor de texto separa las etiquetas de sus valores
+    (ej. 'Nombre Cliente' aparece lejos del nombre real). Por eso el cliente/contrato se buscan por
+    estructura (número de cuenta contrato seguido del nombre en mayúsculas) en vez de por etiqueta."""
     consumos = [float(x.replace(",", ".")) for x in re.findall(r"(\d{2,5}(?:[.,]\d+)?)\s*kWh", texto, flags=re.IGNORECASE)]
+
+    # Contrato + Cliente: se identifican por estructura (numero largo seguido de un nombre en MAYÚSCULAS)
+    m_estructura = re.search(r"\b(\d{9,15})\s*\n\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ]{9,60})\n", texto)
+    contrato = m_estructura.group(1) if m_estructura else _buscar_texto(
+        r"(?:N[uú]mero\s*de\s*Cuenta\s*Contrato|Cuenta\s*Contrato|N[°º]?\s*de?\s*Contrato|N[uú]mero\s*de\s*Suministro)[:\s#Nn°º]*([\w\-]{4,20})", texto)
+    cliente = m_estructura.group(2).strip() if m_estructura else _buscar_texto(
+        r"(?:Nombre\s*del?\s*Cliente|Cliente)[:\s]+([A-ZÁÉÍÓÚÑ][^\n]{3,60})", texto)
+
+    # Dirección: suele ser la línea más larga con separadores "/" típicos de sectores/urbanizaciones
+    direccion = None
+    candidatas_direccion = re.findall(r"[^\n]{25,180}/[^\n]{3,100}", texto)
+    if candidatas_direccion:
+        direccion = max(candidatas_direccion, key=len).strip()
+    if not direccion:
+        direccion = _buscar_texto(r"(?:Direcci[oó]n\s*del?\s*servicio|Direcci[oó]n)[:\s]+([^\n]{5,120})", texto)
+
+    monto_energia = _extraer_monto_energia(texto)
+    valor_pagar = monto_energia if monto_energia is not None else _extraer_valor_total_respaldo(texto)
+
+    return {
+        "cliente": cliente,
+        "contrato": contrato,
+        "direccion": direccion,
+        "valor_pagar": valor_pagar,
+        "consumos_kwh": consumos,
+    }
     return {
         "cliente": _buscar_texto(r"(?:Nombre\s*del?\s*Cliente|Cliente)[:\s]+([A-ZÁÉÍÓÚÑ][^\n]{3,60})", texto),
         "contrato": _buscar_texto(r"(?:N[uú]mero\s*de\s*Cuenta\s*Contrato|Cuenta\s*Contrato|N[°º]?\s*de?\s*Contrato|N[uú]mero\s*de\s*Suministro)[:\s#Nn°º]*([\w\-]{4,20})", texto),
-        "direccion": _buscar_texto(r"(?:Direcci[oó]n)[:\s]+([^\n]{5,90})", texto),
+        "direccion": _buscar_texto(r"(?:Direcci[oó]n\s*del?\s*servicio|Direcci[oó]n)[:\s]+([^\n]{5,120})", texto),
         "valor_pagar": _extraer_valor_pagar(texto),
         "consumos_kwh": consumos,
     }
