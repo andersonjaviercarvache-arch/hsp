@@ -8,6 +8,7 @@ import tempfile
 import os
 import re
 import io
+import math
 import requests
 import pdfplumber
 
@@ -298,6 +299,17 @@ potencia_manual = st.sidebar.number_input(
     help="Déjalo en 0 para usar la potencia sugerida automáticamente calculada. Si ingresas un valor, este sobreescribe la sugerida en todos los cálculos."
 )
 
+# --- SIDEBAR: COMPONENTES DEL SISTEMA (para la tabla de suministro y la propuesta de ahorro) ---
+st.sidebar.header("🔧 Componentes del Sistema")
+potencia_panel_wp = st.sidebar.number_input(
+    "Potencia por Panel (Wp)", min_value=100.0, max_value=1000.0, value=625.0, step=5.0,
+    help="Potencia nominal de un solo panel. Se usa para calcular el número de módulos necesarios."
+)
+area_panel_m2 = st.sidebar.number_input(
+    "Área por Panel (m²)", min_value=1.0, max_value=5.0, value=2.74, step=0.01,
+    help="Área física de un solo panel (típico ~2.6-2.8 m² en paneles grandes de 600+ Wp)."
+)
+
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
 
 # --- BLOQUE: DATOS HISTÓRICOS DE CONSUMO (determina el consumo mensual sugerido) ---
@@ -367,6 +379,9 @@ potencia_sug = consumo_mensual / (hsp_avg * pr_calculado * 30.44)
 # Potencia final: usa la manual si fue ingresada (> 0), si no, la sugerida
 potencia_final = potencia_manual if potencia_manual > 0 else potencia_sug
 generacion_y1 = potencia_final * hsp_avg * pr_calculado * 365
+
+numero_paneles = math.ceil((potencia_final * 1000) / potencia_panel_wp) if potencia_panel_wp > 0 else 0
+area_total_paneles_m2 = numero_paneles * area_panel_m2
 
 with st.expander("🔍 Análisis Meteorológico y Técnico", expanded=True):
     st.caption(f"Fuente de datos meteorológicos: **{fuente_meteo}**")
@@ -509,7 +524,8 @@ with pv2:
     fig_dona, ax_dona = plt.subplots(figsize=(5, 3.2))
     sizes = [pct_autosuficiencia, pct_aporte_red]
     colors_dona = ['#2ecc71', '#bdc3c7']
-    ax_dona.pie(sizes, colors=colors_dona, startangle=90, counterclock=False, wedgeprops=dict(width=0.35))
+    ax_dona.pie(sizes, colors=colors_dona, startangle=90, counterclock=False, wedgeprops=dict(width=0.35),
+                autopct='%1.0f%%', pctdistance=0.82, textprops={'fontsize': 8, 'fontweight': 'bold', 'color': '#333'})
     ax_dona.text(0, 0.08, f"{pct_autosuficiencia:.0f}%", ha='center', va='center', fontsize=22, fontweight='bold', color='#27ae60')
     ax_dona.text(0, -0.18, "AUTOSUFICIENCIA", ha='center', va='center', fontsize=8, color='#555')
     ax_dona.set_title('Cobertura Energética Proyectada', fontsize=10, fontweight='bold')
@@ -544,6 +560,29 @@ def _alto_imagen_mm(ruta, ancho_mm):
     with PILImage.open(ruta) as img:
         w_px, h_px = img.size
     return ancho_mm * (h_px / w_px)
+
+
+# --- ACTIVOS FIJOS (logo, fotos de portafolio) ---
+# Deben vivir en una carpeta "assets/" junto a este script en el repositorio.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+
+
+def _ruta_activo(nombre):
+    return os.path.join(ASSETS_DIR, nombre)
+
+
+def _imagen_segura(pdf, ruta, x, y, w=None, h=None):
+    """Inserta una imagen solo si el archivo existe; si falta, no rompe la generación del PDF."""
+    if os.path.exists(ruta):
+        if w is not None and h is not None:
+            pdf.image(ruta, x=x, y=y, w=w, h=h)
+        elif w is not None:
+            pdf.image(ruta, x=x, y=y, w=w)
+        else:
+            pdf.image(ruta, x=x, y=y)
+        return True
+    return False
 
 
 def agregar_encabezado(pdf):
@@ -604,6 +643,254 @@ def dibujar_tarjeta_metrica(pdf, x, y, w, h, titulo, valor, color_fondo, color_b
     pdf.cell(w - 8, 10, valor, 0, 0, 'L')
 
 
+# --- PÁGINA: PORTADA ---
+def agregar_pagina_portada(pdf, potencia_kwp):
+    pdf.add_page()
+    pdf.set_y(90)
+    ruta_logo = _ruta_activo("logo_portada.png")
+    if os.path.exists(ruta_logo):
+        alto_logo = _alto_imagen_mm(ruta_logo, 130)
+        pdf.image(ruta_logo, x=(210 - 130) / 2, y=90, w=130)
+        pdf.set_y(90 + alto_logo + 15)
+    else:
+        pdf.set_font('Arial', 'B', 26)
+        pdf.cell(0, 15, 'Latitud Solar', 0, 1, 'C')
+        pdf.ln(10)
+
+    pdf.set_font('Arial', 'B', 18)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 10, 'PROPUESTA TÉCNICA ECONÓMICA', 0, 1, 'C')
+    pdf.cell(0, 10, f'{potencia_kwp:.0f}KWP', 0, 1, 'C')
+
+
+# --- PÁGINAS: CASOS DE ÉXITO (fijas, siempre las mismas fotos de portafolio) ---
+def _encabezado_casos_exito(pdf):
+    ruta_icono = _ruta_activo("logo_icono.png")
+    if os.path.exists(ruta_icono):
+        pdf.image(ruta_icono, x=15, y=15, w=14)
+    pdf.set_xy(32, 17)
+    pdf.set_font('Arial', 'B', 11)
+    pdf.set_text_color(20, 20, 20)
+    pdf.cell(0, 5, 'LATITUDSOLAR', 0, 2, 'L')
+    pdf.set_x(32)
+    pdf.cell(0, 5, 'C.LTDA.', 0, 1, 'L')
+
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(31, 119, 180)
+    pdf.set_xy(120, 20)
+    pdf.cell(75, 8, 'Casos de éxito', 0, 1, 'R')
+    pdf.set_text_color(0, 0, 0)
+
+
+def _pie_pagina_contacto(pdf):
+    pdf.set_y(275)
+    pdf.set_font('Arial', '', 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.cell(0, 5, '0969952794', 0, 1, 'L')
+    pdf.cell(0, 5, 'ventas@latitudsolarecuador.com', 0, 1, 'L')
+    pdf.set_text_color(0, 0, 0)
+
+
+def agregar_pagina_casos_exito(pdf, fotos):
+    """fotos: lista de rutas de imagen (hasta 4), dispuestas en cuadrícula 2x2."""
+    pdf.add_page()
+    _encabezado_casos_exito(pdf)
+
+    posiciones = [(15, 45), (110, 45), (15, 145), (110, 145)]
+    ancho_foto = 85
+    for ruta, (x, y) in zip(fotos, posiciones):
+        ruta_completa = _ruta_activo(ruta)
+        if os.path.exists(ruta_completa):
+            try:
+                alto = min(_alto_imagen_mm(ruta_completa, ancho_foto), 95)
+                pdf.image(ruta_completa, x=x, y=y, w=ancho_foto, h=alto)
+            except Exception:
+                pass
+
+    _pie_pagina_contacto(pdf)
+
+
+# --- PÁGINA: PROPUESTA DE AHORRO ---
+def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_paneles, potencia_panel_wp,
+                                     area_total_m2, respaldo_kw, inv_final, ahorro_vida_util, payback_exacto):
+    pdf.add_page()
+    agregar_encabezado(pdf)
+    agregar_titulo_principal(pdf, 'PROPUESTA DE AHORRO')
+
+    pdf.set_font('Arial', '', 10.5)
+    texto_intro = (
+        f"Propuesta técnica y económica para la implementación de una planta solar fotovoltaica On-Grid "
+        f"con respaldo de energía, diseñada para optimizar los costos energéticos y promover la sostenibilidad "
+        f"de la residencia de {nombre_cliente.upper()}."
+    )
+    pdf.multi_cell(0, 6, texto_intro)
+    pdf.ln(15)
+
+    filas = [
+        ("Potencia FV", f"{potencia_final:.0f} kWp"),
+        ("Total de módulos", f"{numero_paneles} unidades"),
+        ("Área de los módulos", f"{area_total_m2:,.2f} m²"),
+        ("Respaldo de cargas críticas", f"{respaldo_kw:.0f} kW/h"),
+        ("Vida útil y producción de energía", "30 años"),
+        ("Costo de planta solar", f"{inv_final:,.2f} USD"),
+        ("Ahorro en vida útil", f"${ahorro_vida_util:,.2f} USD"),
+        ("Recuperación de inversión", f"{payback_exacto:.1f} años" if payback_exacto else "N/A"),
+    ]
+
+    y_tabla = pdf.get_y()
+    ancho_tabla = 180
+    pdf.set_fill_color(31, 119, 180)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Arial', 'B', 10)
+    pdf.set_xy(15, y_tabla)
+    pdf.cell(90, 9, 'Parámetro', 0, 0, 'L', fill=True)
+    pdf.cell(90, 9, 'Unidades / Valor', 0, 1, 'L', fill=True)
+
+    pdf.set_font('Arial', '', 10)
+    for i, (parametro, valor) in enumerate(filas):
+        color_fondo = (245, 246, 247) if i % 2 == 0 else (255, 255, 255)
+        pdf.set_fill_color(*color_fondo)
+        pdf.set_text_color(90, 90, 90)
+        pdf.cell(90, 9, parametro, 0, 0, 'L', fill=True)
+        pdf.set_text_color(39, 174, 96)
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(90, 9, valor, 0, 1, 'L', fill=True)
+        pdf.set_font('Arial', '', 10)
+    pdf.set_text_color(0, 0, 0)
+
+
+# --- PÁGINA: DISTRIBUCIÓN A CUBIERTA (plantilla vacía) ---
+def agregar_pagina_distribucion_cubierta(pdf):
+    pdf.add_page()
+    agregar_encabezado(pdf)
+    agregar_titulo_principal(pdf, 'DISTRIBUCIÓN A CUBIERTA')
+    # Página intencionalmente en blanco: se completa manualmente con el layout de techo por proyecto.
+
+
+# --- PÁGINA: ALCANCE DE SUMINISTRO Y COMPONENTES ---
+def agregar_pagina_alcance_suministro(pdf, potencia_final, numero_paneles, potencia_panel_wp):
+    pdf.add_page()
+    agregar_encabezado(pdf)
+    agregar_titulo_principal(pdf, 'ALCANCE DE SUMINISTRO Y COMPONENTES')
+
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, '1. ALCANCE DEL PROYECTO', 0, 1, 'L')
+    pdf.set_font('Arial', '', 10)
+    texto_alcance = (
+        f"El proyecto comprende la ejecución integral de un sistema de generación fotovoltaica de "
+        f"{potencia_final:.0f}KWP bajo la modalidad \"llave en mano\", que incluye desde la ingeniería, "
+        f"suministro y montaje, hasta la gestión administrativa necesaria para la puesta en marcha legal "
+        f"ante la empresa eléctrica CNEL."
+    )
+    pdf.multi_cell(0, 6, texto_alcance)
+    pdf.ln(6)
+
+    pdf.set_font('Arial', 'B', 11)
+    pdf.cell(0, 8, '3. Tabla de Suministro y Componentes', 0, 1, 'L')
+
+    componentes = [
+        ("Paneles Solares", f"{numero_paneles} unidades (Longi, Trina o Yingli) de {potencia_panel_wp:.0f}Wp", "Incluido"),
+        ("Inversores", "Sistema de inversores híbridos con inyección a red y respaldo.", "Incluido"),
+        ("Estructura de Montaje", "Aluminio anodizado (mid/end clamps y tornillería)", "Incluido"),
+        ("Protecciones Eléctricas", "Tableros de protección en DC y AC", "Incluido"),
+        ("Canalización y Cableado", "Cableado fotovoltaico y tubería", "Incluido"),
+        ("Sistema de Monitoreo", "Sistema de monitoreo remoto", "Incluido"),
+        ("Gestión de Medidor", "Tramitación legal ante CNEL", "Incluido"),
+        ("Instalación y Puesta en Marcha", "Mano de obra especializada", "Incluido"),
+        ("Inducción y Capacitación", "Sesión técnica", "Incluido"),
+        ("Mantenimiento", "Primer año de mantenimiento preventivo", "Gratis"),
+    ]
+
+    anchos = [45, 105, 30]
+    pdf.set_fill_color(31, 119, 180)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Arial', 'B', 9.5)
+    pdf.cell(anchos[0], 9, 'Componente / Servicio', 0, 0, 'L', fill=True)
+    pdf.cell(anchos[1], 9, 'Cantidad / Especificación', 0, 0, 'L', fill=True)
+    pdf.cell(anchos[2], 9, 'Estado', 0, 1, 'C', fill=True)
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('Arial', '', 9)
+    for i, (comp, espec, estado) in enumerate(componentes):
+        if pdf.get_y() > 265:
+            pdf.add_page()
+            agregar_encabezado(pdf)
+        y_ini = pdf.get_y()
+        if i % 2 == 0:
+            pdf.set_fill_color(245, 246, 247)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        pdf.multi_cell(anchos[0], 7, comp, 0, 'L', fill=True)
+        y_fin_izq = pdf.get_y()
+        pdf.set_xy(15 + anchos[0], y_ini)
+        pdf.multi_cell(anchos[1], 7, espec, 0, 'L', fill=True)
+        y_fin_centro = pdf.get_y()
+        alto_fila = max(y_fin_izq, y_fin_centro) - y_ini
+        pdf.set_xy(15 + anchos[0] + anchos[1], y_ini)
+        pdf.cell(anchos[2], alto_fila, estado, 0, 1, 'C', fill=True)
+        pdf.set_y(max(y_fin_izq, y_fin_centro))
+
+
+# --- PÁGINA: RESUMEN FINAL SIMPLIFICADO (tabla ejecutiva + saldo a favor) ---
+def agregar_pagina_resumen_final(pdf, tipo_proyecto, payback_exacto, ahorro_vida_util, inv_final, data_rows):
+    pdf.add_page()
+    agregar_encabezado(pdf)
+    agregar_titulo_principal(pdf, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}')
+
+    saldo_favor = ahorro_vida_util - inv_final
+    pdf.set_font('Arial', '', 10.5)
+    texto_resumen = (
+        f"La inversión se recupera en {payback_exacto:.1f} años solo con el ahorro energético. "
+        f"Al trigésimo año el beneficio acumulado será de ${ahorro_vida_util:,.2f}, dejando un saldo a favor "
+        f"neto constante que maximizará la liquidez durante los 30 años de vida útil de la planta solar."
+    ) if payback_exacto else "Proyección de ahorro a 30 años."
+    pdf.multi_cell(0, 6, texto_resumen)
+    pdf.ln(4)
+
+    headers = ['Año', 'Ahorro Energético', 'Ahorro Tributario', 'Ahorro Total Anual', 'Ahorro Acumulado']
+    anchos = [20, 40, 40, 40, 40]
+    pdf.set_fill_color(31, 119, 180)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Arial', 'B', 9)
+    for i, h in enumerate(headers):
+        pdf.cell(anchos[i], 8, h, 1, 0, 'C', fill=True)
+    pdf.ln()
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('Arial', '', 8.5)
+    for row in data_rows:
+        if pdf.get_y() > 260:
+            pdf.add_page()
+            agregar_encabezado(pdf)
+            pdf.set_fill_color(31, 119, 180); pdf.set_text_color(255, 255, 255); pdf.set_font('Arial', 'B', 9)
+            for i, h in enumerate(headers):
+                pdf.cell(anchos[i], 8, h, 1, 0, 'C', fill=True)
+            pdf.ln()
+            pdf.set_text_color(0, 0, 0); pdf.set_font('Arial', '', 8.5)
+        pdf.cell(anchos[0], 7, f"Año {row['Año']}", 1, 0, 'C')
+        pdf.cell(anchos[1], 7, row['Ahorro Energía'], 1, 0, 'C')
+        pdf.cell(anchos[2], 7, row['Ahorro Trib.'], 1, 0, 'C')
+        pdf.cell(anchos[3], 7, row['Ahorro Año'], 1, 0, 'C')
+        pdf.cell(anchos[4], 7, row['Acumulado'], 1, 1, 'C')
+
+    pdf.ln(4)
+    ancho_resumen = sum(anchos)
+    filas_resumen = [
+        ("Capital Total Ahorrado", f"${ahorro_vida_util:,.2f}", True),
+        ("Inversión Inicial Estimada", f"-${inv_final:,.2f}", False),
+        ("Saldo a Favor Neto", f"${saldo_favor:,.2f}", True),
+        ("Retorno de Inversión", f"{payback_exacto:.1f} años" if payback_exacto else "N/A", False),
+    ]
+    for etiqueta, valor, negrita in filas_resumen:
+        if pdf.get_y() > 270:
+            pdf.add_page()
+            agregar_encabezado(pdf)
+        pdf.set_font('Arial', 'B' if negrita else '', 10)
+        pdf.cell(ancho_resumen - 50, 8, etiqueta, 0, 0, 'R' if not negrita else 'R')
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(50, 8, valor, 0, 1, 'C')
+
+
 def agregar_pagina_perfil_consumo(pdf):
     """Nueva hoja: PERFIL DE CONSUMO ENERGÉTICO"""
     pdf.add_page()
@@ -635,7 +922,8 @@ def agregar_pagina_perfil_consumo(pdf):
     fig_dona, ax_dona = plt.subplots(figsize=(5, 3.2))
     sizes = [pct_autosuficiencia, pct_aporte_red]
     colors_dona = ['#2ecc71', '#bdc3c7']
-    ax_dona.pie(sizes, colors=colors_dona, startangle=90, counterclock=False, wedgeprops=dict(width=0.35))
+    ax_dona.pie(sizes, colors=colors_dona, startangle=90, counterclock=False, wedgeprops=dict(width=0.35),
+                autopct='%1.0f%%', pctdistance=0.82, textprops={'fontsize': 8, 'fontweight': 'bold', 'color': '#333'})
     ax_dona.text(0, 0.08, f"{pct_autosuficiencia:.0f}%", ha='center', va='center', fontsize=22, fontweight='bold', color='#27ae60')
     ax_dona.text(0, -0.18, "AUTOSUFICIENCIA", ha='center', va='center', fontsize=8, color='#555')
     ax_dona.set_title('Cobertura Energética Proyectada', fontsize=10, fontweight='bold')
@@ -732,11 +1020,36 @@ def agregar_pagina_perfil_consumo(pdf):
 # --- FUNCIÓN PDF PRINCIPAL ---
 def generar_pdf():
     pdf = FPDF()
+    pdf.set_margins(15, 15, 15)
 
+    ahorro_vida_util = acumulados[-1] if acumulados else 0.0
+    respaldo_kw = potencia_final  # respaldo de cargas críticas = potencia instalada (sistema híbrido)
+
+    # 1. Portada
+    agregar_pagina_portada(pdf, potencia_final)
+
+    # 2-4. Casos de éxito (fotos fijas de portafolio)
+    agregar_pagina_casos_exito(pdf, ["foto_p2_a.jpg", "foto_p2_b.png", "foto_p2_c.jpg", "foto_p2_d.png"])
+    agregar_pagina_casos_exito(pdf, ["foto_p3_a.jpg", "foto_p3_b.png", "foto_p3_c.jpg", "foto_p3_d.png"])
+    agregar_pagina_casos_exito(pdf, ["foto_p4_a.jpg", "foto_p4_b.png", "foto_p4_c.jpg", "foto_p4_d.png"])
+
+    # 5. Propuesta de ahorro
+    agregar_pagina_propuesta_ahorro(
+        pdf, nombre_cliente, potencia_final, numero_paneles, potencia_panel_wp,
+        area_total_paneles_m2, respaldo_kw, inv_final, ahorro_vida_util, payback_exacto
+    )
+
+    # 6. Distribución a cubierta (plantilla vacía)
+    agregar_pagina_distribucion_cubierta(pdf)
+
+    # 7. Perfil de consumo energético
     agregar_pagina_perfil_consumo(pdf)
 
+    # 8. Alcance de suministro y componentes
+    agregar_pagina_alcance_suministro(pdf, potencia_final, numero_paneles, potencia_panel_wp)
+
+    # 9. Propuesta solar (datos del proyecto + resumen financiero + tabla técnica detallada + gráfico)
     pdf.add_page()
-    pdf.set_margins(15, 15, 15)
     agregar_encabezado(pdf)
     agregar_titulo_principal(pdf, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}')
 
@@ -847,6 +1160,9 @@ def generar_pdf():
         os.remove(plot_p)
     except OSError:
         pass
+
+    # 10. Resumen final simplificado (tabla ejecutiva + saldo a favor neto)
+    agregar_pagina_resumen_final(pdf, tipo_proyecto, payback_exacto, ahorro_vida_util, inv_final, data_rows)
 
     salida_pdf = pdf.output(dest='S')
     if isinstance(salida_pdf, str):
