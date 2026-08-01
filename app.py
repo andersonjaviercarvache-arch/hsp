@@ -738,22 +738,51 @@ def _pie_pagina_contacto(pdf):
 
 
 def agregar_pagina_casos_exito(pdf, fotos):
-    """fotos: lista de rutas de imagen (hasta 4), dispuestas en cuadrícula 2x2."""
+    """fotos: lista de rutas de imagen (hasta 4), organizadas en 2 filas de 2.
+    Nota: algunas de estas imágenes son en realidad un collage de 2 fotos combinadas en un solo
+    archivo (así vienen del material original), y varían bastante en proporción (unas panorámicas,
+    otras verticales). Por eso, para cada fila, se calcula la altura que hace que el ancho total
+    de sus 2 fotos llene exactamente el ancho disponible de la página — sin distorsionar ninguna
+    y sin que ninguna se salga del margen."""
     pdf.add_page()
     _encabezado_casos_exito(pdf)
 
-    posiciones = [(15, 45), (110, 45), (15, 145), (110, 145)]
-    ancho_foto = 85
-    for ruta, (x, y) in zip(fotos, posiciones):
-        ruta_completa = _ruta_activo(ruta)
-        if os.path.exists(ruta_completa):
+    ANCHO_DISPONIBLE = 180
+    GAP_X = 6
+    GAP_Y = 14
+    y = 45
+
+    for i in range(0, len(fotos), 2):
+        par = fotos[i:i + 2]
+        proporciones = []
+        for ruta in par:
+            ruta_completa = _ruta_activo(ruta)
+            if os.path.exists(ruta_completa):
+                with PILImage.open(ruta_completa) as img:
+                    w_px, h_px = img.size
+                proporciones.append(w_px / h_px)
+            else:
+                proporciones.append(None)
+
+        suma_proporciones = sum(p for p in proporciones if p) or 1
+        alto_fila = (ANCHO_DISPONIBLE - GAP_X) / suma_proporciones
+
+        x = 15
+        for ruta, prop in zip(par, proporciones):
+            if prop is None:
+                continue
+            ruta_completa = _ruta_activo(ruta)
             try:
-                alto = min(_alto_imagen_mm(ruta_completa, ancho_foto), 95)
-                pdf.image(ruta_completa, x=x, y=y, w=ancho_foto, h=alto)
+                ancho = alto_fila * prop
+                pdf.image(ruta_completa, x=x, y=y, w=ancho, h=alto_fila)
+                x += ancho + GAP_X
             except Exception:
                 pass
+        y += alto_fila + GAP_Y
 
     _pie_pagina_contacto(pdf)
+
+
 
 
 # --- PÁGINA: PROPUESTA DE AHORRO ---
