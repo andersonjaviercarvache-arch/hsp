@@ -339,6 +339,34 @@ area_panel_m2 = st.sidebar.number_input(
     help="Área física de un solo panel (típico ~2.6-2.8 m² en paneles grandes de 600+ Wp)."
 )
 
+# --- SIDEBAR: FOTOS ESPECÍFICAS DEL PROYECTO (editables, distintas para cada cliente) ---
+st.sidebar.header("📷 Fotos de este Proyecto")
+st.sidebar.caption("A diferencia de 'Casos de éxito' (fijas), estas fotos son propias de cada techo/proyecto.")
+foto_ahorro_subida = st.sidebar.file_uploader(
+    "Foto del techo (página Propuesta de Ahorro)", type=["jpg", "jpeg", "png"], key="uploader_foto_ahorro"
+)
+foto_cubierta_antes_subida = st.sidebar.file_uploader(
+    "Foto Distribución a Cubierta — Antes", type=["jpg", "jpeg", "png"], key="uploader_cubierta_antes"
+)
+foto_cubierta_despues_subida = st.sidebar.file_uploader(
+    "Foto Distribución a Cubierta — Después", type=["jpg", "jpeg", "png"], key="uploader_cubierta_despues"
+)
+
+
+def _guardar_temporal(archivo_subido):
+    """Guarda un archivo subido por el usuario en un archivo temporal y devuelve su ruta (o None)."""
+    if archivo_subido is None:
+        return None
+    sufijo = os.path.splitext(archivo_subido.name)[1] or ".jpg"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=sufijo) as tmp:
+        tmp.write(archivo_subido.getvalue())
+        return tmp.name
+
+
+ruta_foto_ahorro_subida = _guardar_temporal(foto_ahorro_subida)
+ruta_foto_cubierta_antes_subida = _guardar_temporal(foto_cubierta_antes_subida)
+ruta_foto_cubierta_despues_subida = _guardar_temporal(foto_cubierta_despues_subida)
+
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
 
 # --- DIAGNÓSTICO: verificar que la carpeta assets/ esté completa (logo + fotos de portafolio) ---
@@ -602,8 +630,10 @@ def _alto_imagen_mm(ruta, ancho_mm):
 
 
 def agregar_encabezado(pdf):
-    if os.path.exists("Negro sobre blanco (1).png"):
-        pdf.image("Negro sobre blanco (1).png", x=15, y=12, w=40)
+    ruta_logo = _ruta_activo("logo_portada.png")
+    if os.path.exists(ruta_logo):
+        alto_logo = _alto_imagen_mm(ruta_logo, 32)
+        pdf.image(ruta_logo, x=15, y=10, w=32, h=alto_logo)
 
     pdf.set_font('Arial', 'B', 10)
     pdf.set_y(15)
@@ -728,7 +758,8 @@ def agregar_pagina_casos_exito(pdf, fotos):
 
 # --- PÁGINA: PROPUESTA DE AHORRO ---
 def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_paneles, potencia_panel_wp,
-                                     area_total_m2, respaldo_kw, inv_final, ahorro_vida_util, payback_exacto):
+                                     area_total_m2, respaldo_kw, inv_final, ahorro_vida_util, payback_exacto,
+                                     ruta_foto_techo=None):
     pdf.add_page()
     agregar_encabezado(pdf)
     agregar_titulo_principal(pdf, 'PROPUESTA DE AHORRO')
@@ -740,7 +771,15 @@ def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_
         f"de la residencia de {nombre_cliente.upper()}."
     )
     pdf.multi_cell(0, 6, texto_intro)
-    pdf.ln(15)
+    pdf.ln(4)
+
+    if ruta_foto_techo and os.path.exists(ruta_foto_techo):
+        ancho_foto = 130
+        alto_foto = _alto_imagen_mm(ruta_foto_techo, ancho_foto)
+        pdf.image(ruta_foto_techo, x=(210 - ancho_foto) / 2, y=pdf.get_y(), w=ancho_foto)
+        pdf.set_y(pdf.get_y() + alto_foto + 8)
+    else:
+        pdf.ln(11)
 
     filas = [
         ("Potencia FV", f"{potencia_final:.0f} kWp"),
@@ -752,6 +791,10 @@ def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_
         ("Ahorro en vida útil", f"${ahorro_vida_util:,.2f} USD"),
         ("Recuperación de inversión", f"{payback_exacto:.1f} años" if payback_exacto else "N/A"),
     ]
+
+    if pdf.get_y() > 230:
+        pdf.add_page()
+        agregar_encabezado(pdf)
 
     y_tabla = pdf.get_y()
     ancho_tabla = 180
@@ -775,12 +818,25 @@ def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_
     pdf.set_text_color(0, 0, 0)
 
 
-# --- PÁGINA: DISTRIBUCIÓN A CUBIERTA (plantilla vacía) ---
-def agregar_pagina_distribucion_cubierta(pdf):
+# --- PÁGINA: DISTRIBUCIÓN A CUBIERTA (fotos editables, propias de cada proyecto) ---
+def agregar_pagina_distribucion_cubierta(pdf, ruta_foto_antes=None, ruta_foto_despues=None):
     pdf.add_page()
     agregar_encabezado(pdf)
     agregar_titulo_principal(pdf, 'DISTRIBUCIÓN A CUBIERTA')
-    # Página intencionalmente en blanco: se completa manualmente con el layout de techo por proyecto.
+
+    y = pdf.get_y()
+
+    if ruta_foto_antes and os.path.exists(ruta_foto_antes):
+        ancho = 180
+        alto = _alto_imagen_mm(ruta_foto_antes, ancho)
+        pdf.image(ruta_foto_antes, x=(210 - ancho) / 2, y=y, w=ancho)
+        y += alto + 10
+
+    if ruta_foto_despues and os.path.exists(ruta_foto_despues):
+        ancho = 180
+        alto = _alto_imagen_mm(ruta_foto_despues, ancho)
+        pdf.image(ruta_foto_despues, x=(210 - ancho) / 2, y=y, w=ancho)
+    # Si no se sube ninguna foto, la página queda solo con el título (plantilla vacía).
 
 
 # --- PÁGINA: ALCANCE DE SUMINISTRO Y COMPONENTES ---
@@ -1052,11 +1108,14 @@ def generar_pdf():
     # 5. Propuesta de ahorro
     agregar_pagina_propuesta_ahorro(
         pdf, nombre_cliente, potencia_final, numero_paneles, potencia_panel_wp,
-        area_total_paneles_m2, respaldo_kw, inv_final, ahorro_vida_util, payback_exacto
+        area_total_paneles_m2, respaldo_kw, inv_final, ahorro_vida_util, payback_exacto,
+        ruta_foto_techo=ruta_foto_ahorro_subida
     )
 
-    # 6. Distribución a cubierta (plantilla vacía)
-    agregar_pagina_distribucion_cubierta(pdf)
+    # 6. Distribución a cubierta (fotos propias del proyecto, si se subieron)
+    agregar_pagina_distribucion_cubierta(
+        pdf, ruta_foto_antes=ruta_foto_cubierta_antes_subida, ruta_foto_despues=ruta_foto_cubierta_despues_subida
+    )
 
     # 7. Perfil de consumo energético
     agregar_pagina_perfil_consumo(pdf)
