@@ -780,7 +780,10 @@ def generar_pdf():
     except OSError:
         pass
 
-    return pdf.output(dest='S').encode('latin-1')
+    salida_pdf = pdf.output(dest='S')
+    if isinstance(salida_pdf, str):
+        return salida_pdf.encode('latin-1')
+    return bytes(salida_pdf)
 
 
 st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
