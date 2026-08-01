@@ -119,6 +119,32 @@ def _buscar_texto(patron, texto, flags=re.IGNORECASE):
     return m.group(1).strip()
 
 
+def _extraer_valor_pagar(texto):
+    """Busca el monto a pagar probando varias frases típicas de facturas ecuatorianas.
+    Usa la ÚLTIMA coincidencia de cada patrón (el total final suele ir después de los subtotales/impuestos).
+    Si ninguna frase coincide, cae a buscar el último monto con símbolo $ del documento."""
+    patrones = [
+        r"(?:VALOR\s*A\s*PAGAR|VALOR\s*TOTAL\s*A\s*PAGAR|VALOR\s*TOTAL)[^\d]{0,20}(\d[\d.,]*\d|\d)",
+        r"(?:TOTAL\s*A\s*PAGAR|TOTAL\s*PLANILLA|TOTAL\s*FACTURA|TOTAL\s*GENERAL|TOTAL\s*USD|IMPORTE\s*A\s*PAGAR|PAGO\s*TOTAL|TOTAL\s*DEL?\s*CONSUMO)[^\d]{0,20}(\d[\d.,]*\d|\d)",
+    ]
+    for patron in patrones:
+        coincidencias = re.findall(patron, texto, flags=re.IGNORECASE)
+        if coincidencias:
+            valor = coincidencias[-1].replace(",", ".")
+            try:
+                return float(valor)
+            except ValueError:
+                pass
+    # Respaldo: último monto con símbolo $ y 2 decimales en todo el documento
+    coincidencias_dolar = re.findall(r"\$\s*(\d[\d.,]*\d|\d)", texto)
+    if coincidencias_dolar:
+        try:
+            return float(coincidencias_dolar[-1].replace(",", "."))
+        except ValueError:
+            pass
+    return None
+
+
 def extraer_datos_planilla(texto):
     """Extrae datos de una planilla eléctrica ecuatoriana (CNEL u otra), best-effort."""
     consumos = [float(x.replace(",", ".")) for x in re.findall(r"(\d{2,5}(?:[.,]\d+)?)\s*kWh", texto, flags=re.IGNORECASE)]
@@ -126,7 +152,7 @@ def extraer_datos_planilla(texto):
         "cliente": _buscar_texto(r"(?:Nombre\s*del?\s*Cliente|Cliente)[:\s]+([A-ZÁÉÍÓÚÑ][^\n]{3,60})", texto),
         "contrato": _buscar_texto(r"(?:N[uú]mero\s*de\s*Cuenta\s*Contrato|Cuenta\s*Contrato|N[°º]?\s*de?\s*Contrato|N[uú]mero\s*de\s*Suministro)[:\s#Nn°º]*([\w\-]{4,20})", texto),
         "direccion": _buscar_texto(r"(?:Direcci[oó]n)[:\s]+([^\n]{5,90})", texto),
-        "valor_pagar": _buscar_numero(r"(?:Valor\s*a\s*Pagar|Total\s*a\s*Pagar|TOTAL\s*USD)[:\s\$]{0,5}([\d.,]+)", texto),
+        "valor_pagar": _extraer_valor_pagar(texto),
         "consumos_kwh": consumos,
     }
 
