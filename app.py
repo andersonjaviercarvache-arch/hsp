@@ -5,7 +5,19 @@ import matplotlib.ticker as mtick
 from fpdf import FPDF
 import tempfile
 import os
+import re
+import io
+import math
 import requests
+import pdfplumber
+
+try:
+    import pytesseract
+    from pdf2image import convert_from_bytes
+    from PIL import Image
+    OCR_DISPONIBLE = True
+except Exception:
+    OCR_DISPONIBLE = False
 
 # --- 1. BASE DE DATOS DE RESPALDO (usada si NASA POWER no responde) ---
 # HSP: Atlas Solar del Ecuador (CONELEC/CIE, 2008) y estimaciones satelitales NREL/Global Solar Atlas.
@@ -56,17 +68,115 @@ def calcular_pr(temp_ambiente_prom, noct, coef_temp_pct, perdidas_sistema_pct, e
     return pr, t_celda
 
 
+# --- EXTRACCIÓN DE TEXTO DE ARCHIVOS SUBIDOS (PDF digital u OCR de imagen/escaneo) ---
+def extraer_texto_archivo(archivo_subido):
+    """Devuelve (texto_extraido, metodo). metodo: 'texto_pdf', 'ocr', o 'fallo'."""
+    nombre = archivo_subido.name.lower()
+    datos = archivo_subido.read()
+    archivo_subido.seek(0)
+
+    if nombre.endswith(".pdf"):
+        texto = ""
+        try:
+            with pdfplumber.open(io.BytesIO(datos)) as pdf:
+                for pagina in pdf.pages:
+                    texto += (pagina.extract_text() or "") + "\n"
+        except Exception:
+            texto = ""
+
+        if len(texto.strip()) >= 25:
+            return texto, "texto_pdf"
+
+        # El PDF no tiene texto seleccionable (probablemente escaneado) -> intentar OCR
+        if OCR_DISPONIBLE:
+            try:
+                paginas_img = convert_from_bytes(datos, dpi=200)
+                texto_ocr = ""
+                for img in paginas_img:
+                    texto_ocr += pytesseract.image_to_string(img, lang="spa+eng") + "\n"
+                if len(texto_ocr.strip()) >= 10:
+                    return texto_ocr, "ocr"
+            except Exception:
+                pass
+        return "", "fallo"
+
+    else:
+        # Imagen (jpg/png)
+        if OCR_DISPONIBLE:
+            try:
+                img = Image.open(io.BytesIO(datos))
+                texto_ocr = pytesseract.image_to_string(img, lang="spa+eng")
+                if len(texto_ocr.strip()) >= 10:
+                    return texto_ocr, "ocr"
+            except Exception:
+                pass
+        return "", "fallo"
+
+
+def _buscar_numero(patron, texto, flags=re.IGNORECASE):
+    m = re.search(patron, texto, flags)
+    if not m:
+        return None
+    valor = m.group(1).replace(",", ".").replace(" ", "")
+    try:
+        return float(valor)
+    except ValueError:
+        return None
+
+
+def _buscar_texto(patron, texto, flags=re.IGNORECASE):
+    m = re.search(patron, texto, flags)
+    if not m:
+        return None
+    return m.group(1).strip()
+
+
+def extraer_datos_panel(texto):
+    """Extrae parámetros técnicos de una ficha técnica de panel solar (best-effort, revisar siempre)."""
+    return {
+        "potencia_wp": _buscar_numero(r"(?:Maximum Power|Potencia\s*M[aá]xima|Nominal\s*Power|Pmax)[^\d\-]{0,15}(\d{2,4}(?:[.,]\d+)?)\s*W", texto),
+        "noct": _buscar_numero(r"NOCT[^\d\-]{0,40}(\d{2,3}(?:[.,]\d+)?)\s*°?\s*C", texto),
+        "eficiencia_pct": _buscar_numero(r"(?:Module\s*Efficiency|Eficiencia\s*del?\s*[MmPp]ódulo|Eficiencia)[^\d\-]{0,15}(\d{1,2}(?:[.,]\d+)?)\s*%", texto),
+        "coef_temp_pct": _buscar_numero(r"(?:Temperature\s*Coefficient\s*of\s*P(?:max|MAX)|Coeficiente\s*de\s*Temperatura)[^\d\-]{0,20}(-?\d{1,2}[.,]\d+)\s*%", texto),
+    }
+
+
+def extraer_datos_planilla(texto):
+    """Extrae datos de una planilla eléctrica ecuatoriana (CNEL u otra), best-effort."""
+    consumos = [float(x.replace(",", ".")) for x in re.findall(r"(\d{2,5}(?:[.,]\d+)?)\s*kWh", texto, flags=re.IGNORECASE)]
+    return {
+        "cliente": _buscar_texto(r"(?:Nombre\s*del?\s*Cliente|Cliente)[:\s]+([A-ZÁÉÍÓÚÑ][^\n]{3,60})", texto),
+        "contrato": _buscar_texto(r"(?:N[uú]mero\s*de\s*Cuenta\s*Contrato|Cuenta\s*Contrato|N[°º]?\s*de?\s*Contrato|N[uú]mero\s*de\s*Suministro)[:\s#Nn°º]*([\w\-]{4,20})", texto),
+        "direccion": _buscar_texto(r"(?:Direcci[oó]n)[:\s]+([^\n]{5,90})", texto),
+        "valor_pagar": _buscar_numero(r"(?:Valor\s*a\s*Pagar|Total\s*a\s*Pagar|TOTAL\s*USD)[:\s\$]{0,5}([\d.,]+)", texto),
+        "consumos_kwh": consumos,
+    }
+
+
 st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout="wide")
 
-if 'costo_kwp' not in st.session_state:
-    st.session_state.costo_kwp = 850.0
-if 'consumo_mensual' not in st.session_state:
-    st.session_state.consumo_mensual = 1228.0
+valores_default = {
+    "nombre_cliente": "Martillo Jara Angel Cristobal",
+    "costo_kwp": 850.0,
+    "consumo_mensual": 1228.0,
+    "pago_planilla": 149.94,
+    "noct": 45.0,
+    "coef_temp_pct": -0.40,
+    "potencia_panel_wp": 550.0,
+    "eficiencia_panel_pct": 21.0,
+    "ubicacion_cliente": "",
+    "numero_contrato": "",
+}
+for _clave, _valor in valores_default.items():
+    if _clave not in st.session_state:
+        st.session_state[_clave] = _valor
 
 # --- SIDEBAR: INFORMACIÓN DEL CLIENTE ---
 st.sidebar.header("📋 Información del Cliente")
-nombre_cliente = st.sidebar.text_input("Nombre del Cliente", "Martillo Jara Angel Cristobal")
+nombre_cliente = st.sidebar.text_input("Nombre del Cliente", key="nombre_cliente")
 n_proyecto = st.sidebar.text_input("Número de Proyecto", "P0000000010")
+numero_contrato = st.sidebar.text_input("N° de Contrato / Cuenta", key="numero_contrato")
+ubicacion_cliente = st.sidebar.text_input("📍 Ubicación / Dirección del Proyecto", key="ubicacion_cliente")
 tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"])
 vendedor = st.sidebar.text_input("Asesor Comercial", "Ing. Solar")
 
@@ -74,10 +184,14 @@ vendedor = st.sidebar.text_input("Asesor Comercial", "Ing. Solar")
 st.sidebar.header("⚙️ Parámetros Técnicos del Sistema (PR)")
 usar_tiempo_real = st.sidebar.checkbox("🌐 Usar meteorología en tiempo real (NASA POWER)", value=True,
                                         help="Consulta climatología satelital multi-anual real por coordenadas. Si falla la conexión, se usan valores de referencia locales.")
-noct = st.sidebar.number_input("NOCT del panel (°C)", min_value=40.0, max_value=50.0, value=45.0, step=0.5,
+noct = st.sidebar.number_input("NOCT del panel (°C)", min_value=40.0, max_value=50.0, step=0.5, key="noct",
                                 help="Temperatura Nominal de Operación de Celda. Típico 44-47°C según ficha técnica del fabricante.")
-coef_temp_pct = st.sidebar.number_input("Coef. Temperatura Potencia (%/°C)", min_value=-0.60, max_value=-0.20, value=-0.40, step=0.01,
+coef_temp_pct = st.sidebar.number_input("Coef. Temperatura Potencia (%/°C)", min_value=-0.60, max_value=-0.20, step=0.01, key="coef_temp_pct",
                                          help="Pérdida de potencia por cada °C sobre 25°C (condición STC). Típico -0.35% a -0.45%/°C en silicio cristalino.")
+potencia_panel_wp = st.sidebar.number_input("Potencia por Panel (Wp)", min_value=100.0, max_value=1000.0, step=5.0, key="potencia_panel_wp",
+                                             help="Potencia nominal de un solo panel, usada para estimar el número de paneles necesarios.")
+eficiencia_panel_pct = st.sidebar.number_input("Eficiencia del Panel (%)", min_value=10.0, max_value=25.0, step=0.1, key="eficiencia_panel_pct",
+                                                help="Eficiencia de conversión del módulo, usada para estimar el área aproximada de instalación.")
 eficiencia_inversor_pct = st.sidebar.number_input("Eficiencia del Inversor (%)", min_value=90.0, max_value=99.5, value=97.0, step=0.1)
 perdidas_sistema_pct = st.sidebar.number_input("Otras Pérdidas del Sistema (%)", min_value=0.0, max_value=25.0, value=9.0, step=0.5,
                                                 help="Suciedad/soiling, cableado DC-AC, mismatch entre paneles y disponibilidad. Rango típico 7-12%.")
@@ -96,6 +210,65 @@ potencia_manual = st.sidebar.number_input(
 )
 
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
+
+# --- BLOQUE: CARGA DE DOCUMENTOS PARA AUTO-COMPLETADO ---
+st.subheader("📎 Carga de Documentos (Auto-completado)")
+if not OCR_DISPONIBLE:
+    st.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
+
+doc1, doc2 = st.columns(2)
+
+with doc1:
+    st.markdown("**Ficha Técnica del Panel**")
+    archivo_ficha = st.file_uploader("Sube la ficha técnica (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_ficha")
+    if archivo_ficha is not None:
+        texto_ficha, metodo_ficha = extraer_texto_archivo(archivo_ficha)
+        if metodo_ficha == "fallo":
+            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente en el sidebar.")
+        else:
+            datos_panel = extraer_datos_panel(texto_ficha)
+            st.caption(f"Método de lectura: {'texto PDF' if metodo_ficha == 'texto_pdf' else 'OCR (imagen/escaneo)'}. Revisa antes de aplicar.")
+            st.json({k: v for k, v in datos_panel.items() if v is not None} or {"detectado": "ningún parámetro reconocido"})
+            if st.button("📌 Aplicar valores detectados de la ficha técnica", key="btn_aplicar_ficha"):
+                if datos_panel["noct"] is not None:
+                    st.session_state.noct = datos_panel["noct"]
+                if datos_panel["coef_temp_pct"] is not None:
+                    st.session_state.coef_temp_pct = datos_panel["coef_temp_pct"]
+                if datos_panel["potencia_wp"] is not None:
+                    st.session_state.potencia_panel_wp = datos_panel["potencia_wp"]
+                if datos_panel["eficiencia_pct"] is not None:
+                    st.session_state.eficiencia_panel_pct = datos_panel["eficiencia_pct"]
+                st.rerun()
+
+with doc2:
+    st.markdown("**Planilla Eléctrica**")
+    archivo_planilla = st.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
+    if archivo_planilla is not None:
+        texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
+        if metodo_planilla == "fallo":
+            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente.")
+        else:
+            datos_planilla = extraer_datos_planilla(texto_planilla)
+            st.caption(f"Método de lectura: {'texto PDF' if metodo_planilla == 'texto_pdf' else 'OCR (imagen/escaneo)'}. Revisa antes de aplicar.")
+            resumen_planilla = {k: v for k, v in datos_planilla.items() if v not in (None, [])}
+            st.json(resumen_planilla or {"detectado": "ningún parámetro reconocido"})
+            if st.button("📌 Aplicar datos detectados de la planilla", key="btn_aplicar_planilla"):
+                if datos_planilla["cliente"]:
+                    st.session_state.nombre_cliente = datos_planilla["cliente"]
+                if datos_planilla["contrato"]:
+                    st.session_state.numero_contrato = datos_planilla["contrato"]
+                if datos_planilla["direccion"]:
+                    st.session_state.ubicacion_cliente = datos_planilla["direccion"]
+                if datos_planilla["consumos_kwh"]:
+                    consumos_detectados = datos_planilla["consumos_kwh"]
+                    st.session_state.tabla_historico = pd.DataFrame({
+                        "Mes": [f"Mes {i+1}" for i in range(len(consumos_detectados))],
+                        "Consumo (kWh)": consumos_detectados
+                    })
+                    st.session_state.consumo_mensual = round(sum(consumos_detectados) / len(consumos_detectados), 2)
+                if datos_planilla["valor_pagar"] and datos_planilla["consumos_kwh"]:
+                    st.session_state.pago_planilla = datos_planilla["valor_pagar"]
+                st.rerun()
 
 # --- BLOQUE: DATOS HISTÓRICOS DE CONSUMO (determina el consumo mensual sugerido) ---
 st.subheader("📊 Consumo Histórico del Cliente")
@@ -132,7 +305,7 @@ with st.container():
     with col2:
         consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", key="consumo_mensual")
     with col3:
-        pago_planilla = st.number_input("💵 Planilla USD/mes", value=149.94)
+        pago_planilla = st.number_input("💵 Planilla USD/mes", key="pago_planilla")
         costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
     with col4:
         deg_y1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0) / 100
@@ -165,6 +338,9 @@ potencia_sug = consumo_mensual / (hsp_avg * pr_calculado * 30.44)
 potencia_final = potencia_manual if potencia_manual > 0 else potencia_sug
 generacion_y1 = potencia_final * hsp_avg * pr_calculado * 365
 
+numero_paneles = math.ceil((potencia_final * 1000) / potencia_panel_wp) if potencia_panel_wp > 0 else 0
+area_aproximada_m2 = (potencia_final * 1000) / (eficiencia_panel_pct / 100.0 * 1000) if eficiencia_panel_pct > 0 else 0
+
 with st.expander("🔍 Análisis Meteorológico y Técnico", expanded=True):
     st.caption(f"Fuente de datos meteorológicos: **{fuente_meteo}**")
     m1, m2, m3, m4, m5 = st.columns(5)
@@ -174,7 +350,10 @@ with st.expander("🔍 Análisis Meteorológico y Técnico", expanded=True):
     m3.metric("HSP Promedio", f"{hsp_avg:.2f} h/día")
     m4.metric("Temp. Celda Estimada", f"{temp_celda:.1f} °C")
     m5.metric("PR (Performance Ratio)", f"{pr_calculado:.2%}")
-    st.metric("Costo kWh", f"${costo_kwh:.4f}")
+    n1, n2, n3 = st.columns(3)
+    n1.metric("Costo kWh", f"${costo_kwh:.4f}")
+    n2.metric("N° de Paneles Estimado", f"{numero_paneles} paneles")
+    n3.metric("Área Aproximada", f"{area_aproximada_m2:.1f} m²")
 
 # --- BLOQUE 2: INVERSIÓN Y AHORRO TRIBUTARIO ---
 st.subheader("💰 Inversión y Beneficios")
@@ -503,8 +682,10 @@ def generar_pdf():
     pdf.cell(95, 7, f'Cliente: {nombre_cliente}', 0, 0)
     pdf.cell(0, 7, f'Ciudad: {ciudad_sel}', 0, 1)
     pdf.cell(95, 7, f'Proyecto: {n_proyecto}', 0, 0)
-    pdf.cell(0, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 1)
-    pdf.cell(95, 7, f'Potencia Instalada: {potencia_final:.2f} kWp', 0, 1)
+    pdf.cell(0, 7, f'N° Contrato: {numero_contrato if numero_contrato else "N/A"}', 0, 1)
+    pdf.cell(95, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 0)
+    pdf.cell(0, 7, f'Potencia Instalada: {potencia_final:.2f} kWp', 0, 1)
+    pdf.cell(0, 7, f'Ubicación: {ubicacion_cliente if ubicacion_cliente else "N/A"}', 0, 1)
 
     pdf.ln(8)
     pdf.set_fill_color(240, 240, 240)
