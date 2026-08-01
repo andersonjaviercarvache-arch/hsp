@@ -132,12 +132,32 @@ def _buscar_texto(patron, texto, flags=re.IGNORECASE):
 
 
 def extraer_datos_panel(texto):
-    """Extrae parámetros técnicos de una ficha técnica de panel solar (best-effort, revisar siempre)."""
+    """Extrae parámetros técnicos de una ficha técnica de panel solar (best-effort, revisar siempre).
+    Las fichas técnicas suelen listar varias variantes de potencia (ej. 605/610/615/620 W) para la misma
+    familia de panel; NOCT y coeficiente de temperatura son propios del material y no cambian entre variantes."""
+    noct = _buscar_numero(r"NOCT[^\d\-]{0,40}(\d{2,3}(?:[.,]\d+)?)\s*°?\s*C", texto)
+    coef_temp_pct = _buscar_numero(r"(?:Temperature\s*Coefficient\s*of\s*P(?:max|MAX)|Coeficiente\s*de\s*Temperatura)[^\d\-]{0,20}(-?\d{1,2}[.,]\d+)\s*%", texto)
+
+    # 1) Intento estricto: números seguidos de "W"/"Wp", excluyendo referencias de irradiancia (W/m2)
+    candidatos_w = re.findall(r"\b([2-8]\d{2}(?:[.,]\d+)?)\s*Wp?\b(?!\s*/\s*m)", texto, flags=re.IGNORECASE)
+    potencias_wp = sorted({float(v.replace(",", ".")) for v in candidatos_w})
+
+    # 2) Respaldo: buscar una fila de tabla con varios números de 3 dígitos cerca de "Power"/"Potencia"
+    if len(potencias_wp) < 2:
+        m = re.search(r"(?:Maximum Power|Peak Power|Potencia\s*(?:Nominal|M[aá]xima))([^\n]*\n?[^\n]*)", texto, flags=re.IGNORECASE)
+        if m:
+            extra = re.findall(r"\b([2-8]\d{2})\b", m.group(1))
+            potencias_wp = sorted({float(v) for v in extra}) or potencias_wp
+
+    # Eficiencias (%) en rango típico de módulo (15-25%), en el orden en que aparecen en el texto
+    eficiencias_pct = [float(v.replace(",", ".")) for v in re.findall(r"\b(1[5-9](?:[.,]\d+)?|2[0-5](?:[.,]\d+)?)\s*%", texto)]
+
     return {
-        "potencia_wp": _buscar_numero(r"(?:Maximum Power|Potencia\s*M[aá]xima|Nominal\s*Power|Pmax)[^\d\-]{0,15}(\d{2,4}(?:[.,]\d+)?)\s*W", texto),
-        "noct": _buscar_numero(r"NOCT[^\d\-]{0,40}(\d{2,3}(?:[.,]\d+)?)\s*°?\s*C", texto),
-        "eficiencia_pct": _buscar_numero(r"(?:Module\s*Efficiency|Eficiencia\s*del?\s*[MmPp]ódulo|Eficiencia)[^\d\-]{0,15}(\d{1,2}(?:[.,]\d+)?)\s*%", texto),
-        "coef_temp_pct": _buscar_numero(r"(?:Temperature\s*Coefficient\s*of\s*P(?:max|MAX)|Coeficiente\s*de\s*Temperatura)[^\d\-]{0,20}(-?\d{1,2}[.,]\d+)\s*%", texto),
+        "potencias_wp": potencias_wp,
+        "eficiencias_pct": eficiencias_pct if len(eficiencias_pct) == len(potencias_wp) and len(potencias_wp) > 0 else [],
+        "eficiencia_pct": eficiencias_pct[0] if eficiencias_pct else None,
+        "noct": noct,
+        "coef_temp_pct": coef_temp_pct,
     }
 
 
@@ -176,39 +196,63 @@ st.sidebar.header("📎 Paso 1: Carga de Documentos")
 if not OCR_DISPONIBLE:
     st.sidebar.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
 
-with st.sidebar.expander("🔧 Ficha Técnica del Panel", expanded=False):
+def _id_archivo(archivo):
+    return f"{archivo.name}_{archivo.size}"
+
+
+with st.sidebar.expander("🔧 Ficha Técnica del Panel", expanded=True):
     archivo_ficha = st.file_uploader("Sube la ficha técnica (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_ficha")
     if archivo_ficha is not None:
-        texto_ficha, metodo_ficha = extraer_texto_archivo(archivo_ficha)
-        if metodo_ficha == "fallo":
-            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente abajo.")
-        else:
-            datos_panel = extraer_datos_panel(texto_ficha)
-            st.caption(f"Lectura: {'texto PDF' if metodo_ficha == 'texto_pdf' else 'OCR'}. Revisa antes de aplicar.")
-            st.json({k: v for k, v in datos_panel.items() if v is not None} or {"detectado": "ningún parámetro reconocido"})
-            if st.button("📌 Aplicar valores de la ficha técnica", key="btn_aplicar_ficha"):
+        id_actual_ficha = _id_archivo(archivo_ficha)
+        if st.session_state.get("_id_ficha_procesada") != id_actual_ficha:
+            texto_ficha, metodo_ficha = extraer_texto_archivo(archivo_ficha)
+            if metodo_ficha == "fallo":
+                st.error("No se pudo leer este archivo (ni texto ni OCR). Ingresa los valores manualmente abajo.")
+            else:
+                datos_panel = extraer_datos_panel(texto_ficha)
                 if datos_panel["noct"] is not None:
                     st.session_state.noct = datos_panel["noct"]
                 if datos_panel["coef_temp_pct"] is not None:
                     st.session_state.coef_temp_pct = datos_panel["coef_temp_pct"]
-                if datos_panel["potencia_wp"] is not None:
-                    st.session_state.potencia_panel_wp = datos_panel["potencia_wp"]
+                if datos_panel["potencias_wp"]:
+                    st.session_state.potencia_panel_wp = datos_panel["potencias_wp"][0]
                 if datos_panel["eficiencia_pct"] is not None:
                     st.session_state.eficiencia_panel_pct = datos_panel["eficiencia_pct"]
+                st.session_state["_datos_panel_detectados"] = datos_panel
+                st.session_state["_id_ficha_procesada"] = id_actual_ficha
+                st.rerun()
+        else:
+            datos_panel = st.session_state.get("_datos_panel_detectados", {})
+            st.success("✅ Ficha técnica procesada — parámetros aplicados automáticamente.")
+            st.caption(f"Detectado: NOCT={datos_panel.get('noct')}, Coef. Temp={datos_panel.get('coef_temp_pct')}%, Potencias={datos_panel.get('potencias_wp')}")
+            potencias_detectadas = datos_panel.get("potencias_wp", [])
+            eficiencias_detectadas = datos_panel.get("eficiencias_pct", [])
+            if len(potencias_detectadas) > 1:
+                idx_actual = potencias_detectadas.index(st.session_state.potencia_panel_wp) if st.session_state.potencia_panel_wp in potencias_detectadas else 0
+                seleccion_potencia = st.selectbox(
+                    "⚡ Esta ficha tiene varias variantes de potencia — elige la del panel a usar:",
+                    potencias_detectadas, index=idx_actual, key="selector_potencia_variante"
+                )
+                if seleccion_potencia != st.session_state.potencia_panel_wp:
+                    st.session_state.potencia_panel_wp = seleccion_potencia
+                    if len(eficiencias_detectadas) == len(potencias_detectadas):
+                        st.session_state.eficiencia_panel_pct = eficiencias_detectadas[potencias_detectadas.index(seleccion_potencia)]
+                    st.rerun()
+            if st.button("🔄 Quitar archivo y volver a subir otro", key="btn_reset_ficha"):
+                st.session_state.pop("_id_ficha_procesada", None)
+                st.session_state.pop("_datos_panel_detectados", None)
                 st.rerun()
 
-with st.sidebar.expander("📄 Planilla Eléctrica", expanded=False):
+with st.sidebar.expander("📄 Planilla Eléctrica", expanded=True):
     archivo_planilla = st.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
     if archivo_planilla is not None:
-        texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
-        if metodo_planilla == "fallo":
-            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente.")
-        else:
-            datos_planilla = extraer_datos_planilla(texto_planilla)
-            st.caption(f"Lectura: {'texto PDF' if metodo_planilla == 'texto_pdf' else 'OCR'}. Revisa antes de aplicar.")
-            resumen_planilla = {k: v for k, v in datos_planilla.items() if v not in (None, [])}
-            st.json(resumen_planilla or {"detectado": "ningún parámetro reconocido"})
-            if st.button("📌 Aplicar datos de la planilla", key="btn_aplicar_planilla"):
+        id_actual_planilla = _id_archivo(archivo_planilla)
+        if st.session_state.get("_id_planilla_procesada") != id_actual_planilla:
+            texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
+            if metodo_planilla == "fallo":
+                st.error("No se pudo leer este archivo (ni texto ni OCR). Ingresa los valores manualmente.")
+            else:
+                datos_planilla = extraer_datos_planilla(texto_planilla)
                 if datos_planilla["cliente"]:
                     st.session_state.nombre_cliente = datos_planilla["cliente"]
                 if datos_planilla["contrato"]:
@@ -224,6 +268,17 @@ with st.sidebar.expander("📄 Planilla Eléctrica", expanded=False):
                     st.session_state.consumo_mensual = round(sum(consumos_detectados) / len(consumos_detectados), 2)
                 if datos_planilla["valor_pagar"] and datos_planilla["consumos_kwh"]:
                     st.session_state.pago_planilla = datos_planilla["valor_pagar"]
+                st.session_state["_datos_planilla_detectados"] = datos_planilla
+                st.session_state["_id_planilla_procesada"] = id_actual_planilla
+                st.rerun()
+        else:
+            datos_planilla = st.session_state.get("_datos_planilla_detectados", {})
+            st.success("✅ Planilla procesada — todos los campos se llenaron automáticamente.")
+            st.caption(f"Cliente: {datos_planilla.get('cliente')} | Contrato: {datos_planilla.get('contrato')} | "
+                       f"Consumo promedio: {st.session_state.consumo_mensual:,.0f} kWh/mes")
+            if st.button("🔄 Quitar archivo y volver a subir otro", key="btn_reset_planilla"):
+                st.session_state.pop("_id_planilla_procesada", None)
+                st.session_state.pop("_datos_planilla_detectados", None)
                 st.rerun()
 
 # --- SIDEBAR: INFORMACIÓN DEL CLIENTE ---
