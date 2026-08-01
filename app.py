@@ -20,6 +20,35 @@ try:
 except Exception:
     OCR_DISPONIBLE = False
 
+# --- ACTIVOS FIJOS (logo, fotos de portafolio) ---
+# Deben vivir en una carpeta "assets/" junto a este script en el repositorio.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+
+ARCHIVOS_ASSETS_REQUERIDOS = [
+    "logo_icono.png", "logo_portada.png",
+    "foto_p2_a.jpg", "foto_p2_b.png", "foto_p2_c.jpg", "foto_p2_d.png",
+    "foto_p3_a.jpg", "foto_p3_b.png", "foto_p3_c.jpg", "foto_p3_d.png",
+    "foto_p4_a.jpg", "foto_p4_b.png", "foto_p4_c.jpg", "foto_p4_d.png",
+]
+
+
+def _ruta_activo(nombre):
+    return os.path.join(ASSETS_DIR, nombre)
+
+
+def _imagen_segura(pdf, ruta, x, y, w=None, h=None):
+    """Inserta una imagen solo si el archivo existe; si falta, no rompe la generación del PDF."""
+    if os.path.exists(ruta):
+        if w is not None and h is not None:
+            pdf.image(ruta, x=x, y=y, w=w, h=h)
+        elif w is not None:
+            pdf.image(ruta, x=x, y=y, w=w)
+        else:
+            pdf.image(ruta, x=x, y=y)
+        return True
+    return False
+
 # --- 1. BASE DE DATOS DE RESPALDO (usada si NASA POWER no responde) ---
 # HSP: Atlas Solar del Ecuador (CONELEC/CIE, 2008) y estimaciones satelitales NREL/Global Solar Atlas.
 # Coordenadas: ubicación geográfica estándar de cada ciudad.
@@ -312,6 +341,16 @@ area_panel_m2 = st.sidebar.number_input(
 
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
 
+# --- DIAGNÓSTICO: verificar que la carpeta assets/ esté completa (logo + fotos de portafolio) ---
+_faltantes = [f for f in ARCHIVOS_ASSETS_REQUERIDOS if not os.path.exists(_ruta_activo(f))]
+if _faltantes:
+    st.error(
+        f"⚠️ Faltan {len(_faltantes)} de {len(ARCHIVOS_ASSETS_REQUERIDOS)} archivos en la carpeta `assets/` "
+        f"(por eso la portada y las páginas de 'Casos de éxito' salen en blanco en el PDF).\n\n"
+        f"Ruta donde se está buscando: `{ASSETS_DIR}`\n\n"
+        f"Archivos faltantes: {', '.join(_faltantes)}"
+    )
+
 # --- BLOQUE: DATOS HISTÓRICOS DE CONSUMO (determina el consumo mensual sugerido) ---
 st.subheader("📊 Consumo Histórico del Cliente")
 st.caption("Ingresa los meses y consumos reales (ej. de planillas). El promedio se puede usar como Consumo Mensual, que es lo que determina la potencia sugerida de la planta.")
@@ -560,29 +599,6 @@ def _alto_imagen_mm(ruta, ancho_mm):
     with PILImage.open(ruta) as img:
         w_px, h_px = img.size
     return ancho_mm * (h_px / w_px)
-
-
-# --- ACTIVOS FIJOS (logo, fotos de portafolio) ---
-# Deben vivir en una carpeta "assets/" junto a este script en el repositorio.
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-
-
-def _ruta_activo(nombre):
-    return os.path.join(ASSETS_DIR, nombre)
-
-
-def _imagen_segura(pdf, ruta, x, y, w=None, h=None):
-    """Inserta una imagen solo si el archivo existe; si falta, no rompe la generación del PDF."""
-    if os.path.exists(ruta):
-        if w is not None and h is not None:
-            pdf.image(ruta, x=x, y=y, w=w, h=h)
-        elif w is not None:
-            pdf.image(ruta, x=x, y=y, w=w)
-        else:
-            pdf.image(ruta, x=x, y=y)
-        return True
-    return False
 
 
 def agregar_encabezado(pdf):
