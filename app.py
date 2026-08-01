@@ -171,6 +171,61 @@ for _clave, _valor in valores_default.items():
     if _clave not in st.session_state:
         st.session_state[_clave] = _valor
 
+# --- SIDEBAR PASO 1: CARGA DE DOCUMENTOS (debe ejecutarse ANTES que cualquier widget con las mismas claves) ---
+st.sidebar.header("📎 Paso 1: Carga de Documentos")
+if not OCR_DISPONIBLE:
+    st.sidebar.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
+
+with st.sidebar.expander("🔧 Ficha Técnica del Panel", expanded=False):
+    archivo_ficha = st.file_uploader("Sube la ficha técnica (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_ficha")
+    if archivo_ficha is not None:
+        texto_ficha, metodo_ficha = extraer_texto_archivo(archivo_ficha)
+        if metodo_ficha == "fallo":
+            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente abajo.")
+        else:
+            datos_panel = extraer_datos_panel(texto_ficha)
+            st.caption(f"Lectura: {'texto PDF' if metodo_ficha == 'texto_pdf' else 'OCR'}. Revisa antes de aplicar.")
+            st.json({k: v for k, v in datos_panel.items() if v is not None} or {"detectado": "ningún parámetro reconocido"})
+            if st.button("📌 Aplicar valores de la ficha técnica", key="btn_aplicar_ficha"):
+                if datos_panel["noct"] is not None:
+                    st.session_state.noct = datos_panel["noct"]
+                if datos_panel["coef_temp_pct"] is not None:
+                    st.session_state.coef_temp_pct = datos_panel["coef_temp_pct"]
+                if datos_panel["potencia_wp"] is not None:
+                    st.session_state.potencia_panel_wp = datos_panel["potencia_wp"]
+                if datos_panel["eficiencia_pct"] is not None:
+                    st.session_state.eficiencia_panel_pct = datos_panel["eficiencia_pct"]
+                st.rerun()
+
+with st.sidebar.expander("📄 Planilla Eléctrica", expanded=False):
+    archivo_planilla = st.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
+    if archivo_planilla is not None:
+        texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
+        if metodo_planilla == "fallo":
+            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente.")
+        else:
+            datos_planilla = extraer_datos_planilla(texto_planilla)
+            st.caption(f"Lectura: {'texto PDF' if metodo_planilla == 'texto_pdf' else 'OCR'}. Revisa antes de aplicar.")
+            resumen_planilla = {k: v for k, v in datos_planilla.items() if v not in (None, [])}
+            st.json(resumen_planilla or {"detectado": "ningún parámetro reconocido"})
+            if st.button("📌 Aplicar datos de la planilla", key="btn_aplicar_planilla"):
+                if datos_planilla["cliente"]:
+                    st.session_state.nombre_cliente = datos_planilla["cliente"]
+                if datos_planilla["contrato"]:
+                    st.session_state.numero_contrato = datos_planilla["contrato"]
+                if datos_planilla["direccion"]:
+                    st.session_state.ubicacion_cliente = datos_planilla["direccion"]
+                if datos_planilla["consumos_kwh"]:
+                    consumos_detectados = datos_planilla["consumos_kwh"]
+                    st.session_state.tabla_historico = pd.DataFrame({
+                        "Mes": [f"Mes {i+1}" for i in range(len(consumos_detectados))],
+                        "Consumo (kWh)": consumos_detectados
+                    })
+                    st.session_state.consumo_mensual = round(sum(consumos_detectados) / len(consumos_detectados), 2)
+                if datos_planilla["valor_pagar"] and datos_planilla["consumos_kwh"]:
+                    st.session_state.pago_planilla = datos_planilla["valor_pagar"]
+                st.rerun()
+
 # --- SIDEBAR: INFORMACIÓN DEL CLIENTE ---
 st.sidebar.header("📋 Información del Cliente")
 nombre_cliente = st.sidebar.text_input("Nombre del Cliente", key="nombre_cliente")
@@ -210,65 +265,6 @@ potencia_manual = st.sidebar.number_input(
 )
 
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
-
-# --- BLOQUE: CARGA DE DOCUMENTOS PARA AUTO-COMPLETADO ---
-st.subheader("📎 Carga de Documentos (Auto-completado)")
-if not OCR_DISPONIBLE:
-    st.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
-
-doc1, doc2 = st.columns(2)
-
-with doc1:
-    st.markdown("**Ficha Técnica del Panel**")
-    archivo_ficha = st.file_uploader("Sube la ficha técnica (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_ficha")
-    if archivo_ficha is not None:
-        texto_ficha, metodo_ficha = extraer_texto_archivo(archivo_ficha)
-        if metodo_ficha == "fallo":
-            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente en el sidebar.")
-        else:
-            datos_panel = extraer_datos_panel(texto_ficha)
-            st.caption(f"Método de lectura: {'texto PDF' if metodo_ficha == 'texto_pdf' else 'OCR (imagen/escaneo)'}. Revisa antes de aplicar.")
-            st.json({k: v for k, v in datos_panel.items() if v is not None} or {"detectado": "ningún parámetro reconocido"})
-            if st.button("📌 Aplicar valores detectados de la ficha técnica", key="btn_aplicar_ficha"):
-                if datos_panel["noct"] is not None:
-                    st.session_state.noct = datos_panel["noct"]
-                if datos_panel["coef_temp_pct"] is not None:
-                    st.session_state.coef_temp_pct = datos_panel["coef_temp_pct"]
-                if datos_panel["potencia_wp"] is not None:
-                    st.session_state.potencia_panel_wp = datos_panel["potencia_wp"]
-                if datos_panel["eficiencia_pct"] is not None:
-                    st.session_state.eficiencia_panel_pct = datos_panel["eficiencia_pct"]
-                st.rerun()
-
-with doc2:
-    st.markdown("**Planilla Eléctrica**")
-    archivo_planilla = st.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
-    if archivo_planilla is not None:
-        texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
-        if metodo_planilla == "fallo":
-            st.error("No se pudo extraer texto de este archivo. Ingresa los valores manualmente.")
-        else:
-            datos_planilla = extraer_datos_planilla(texto_planilla)
-            st.caption(f"Método de lectura: {'texto PDF' if metodo_planilla == 'texto_pdf' else 'OCR (imagen/escaneo)'}. Revisa antes de aplicar.")
-            resumen_planilla = {k: v for k, v in datos_planilla.items() if v not in (None, [])}
-            st.json(resumen_planilla or {"detectado": "ningún parámetro reconocido"})
-            if st.button("📌 Aplicar datos detectados de la planilla", key="btn_aplicar_planilla"):
-                if datos_planilla["cliente"]:
-                    st.session_state.nombre_cliente = datos_planilla["cliente"]
-                if datos_planilla["contrato"]:
-                    st.session_state.numero_contrato = datos_planilla["contrato"]
-                if datos_planilla["direccion"]:
-                    st.session_state.ubicacion_cliente = datos_planilla["direccion"]
-                if datos_planilla["consumos_kwh"]:
-                    consumos_detectados = datos_planilla["consumos_kwh"]
-                    st.session_state.tabla_historico = pd.DataFrame({
-                        "Mes": [f"Mes {i+1}" for i in range(len(consumos_detectados))],
-                        "Consumo (kWh)": consumos_detectados
-                    })
-                    st.session_state.consumo_mensual = round(sum(consumos_detectados) / len(consumos_detectados), 2)
-                if datos_planilla["valor_pagar"] and datos_planilla["consumos_kwh"]:
-                    st.session_state.pago_planilla = datos_planilla["valor_pagar"]
-                st.rerun()
 
 # --- BLOQUE: DATOS HISTÓRICOS DE CONSUMO (determina el consumo mensual sugerido) ---
 st.subheader("📊 Consumo Histórico del Cliente")
