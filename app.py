@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 from fpdf import FPDF
+from PIL import Image as PILImage
 import tempfile
 import os
 import re
@@ -511,6 +512,15 @@ st.markdown(f"**Conclusión Técnica:** {texto_conclusion_preview}")
 
 
 # --- FUNCIONES AUXILIARES DE DISEÑO PARA EL PDF ---
+def _alto_imagen_mm(ruta, ancho_mm):
+    """Calcula la altura real (en mm) que tendrá una imagen al insertarla con un ancho fijo,
+    a partir de sus dimensiones reales en píxeles. Evita solapamientos cuando una imagen
+    (ej. una que incluye leyenda) resulta más alta de lo esperado."""
+    with PILImage.open(ruta) as img:
+        w_px, h_px = img.size
+    return ancho_mm * (h_px / w_px)
+
+
 def agregar_encabezado(pdf):
     if os.path.exists("Negro sobre blanco (1).png"):
         pdf.image("Negro sobre blanco (1).png", x=15, y=12, w=40)
@@ -576,7 +586,9 @@ def agregar_pagina_perfil_consumo(pdf):
     agregar_titulo_principal(pdf, 'PERFIL DE CONSUMO ENERGÉTICO')
 
     archivos_temp = []
+    ANCHO_COL = 86
 
+    # --- SECCIÓN 1 ---
     dibujar_titulo_seccion(pdf, '1. DISTRIBUCIÓN Y CAPACIDAD DE GENERACIÓN')
     y_seccion1 = pdf.get_y()
 
@@ -584,8 +596,11 @@ def agregar_pagina_perfil_consumo(pdf):
     colores_barras = ['#95a5a6'] * (len(valores_hist) - 1) + ['#2c3e50'] if valores_hist else []
     ax_hist.bar(meses_hist, valores_hist, color=colores_barras if colores_barras else '#2c3e50')
     ax_hist.axhline(y=promedio_hist, color='red', linewidth=1.5)
+    if valores_hist:
+        ax_hist.set_ylim(0, max(max(valores_hist), promedio_hist) * 1.20)  # margen superior: evita que la barra/línea toquen el título
     ax_hist.set_ylabel('kWh')
     ax_hist.set_title('Histórico de Consumo Eléctrico', fontsize=10, fontweight='bold')
+    fig_hist.tight_layout()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp1:
         plt.savefig(tmp1.name, dpi=200, bbox_inches='tight')
         ruta_hist = tmp1.name
@@ -599,52 +614,79 @@ def agregar_pagina_perfil_consumo(pdf):
     ax_dona.text(0, 0.08, f"{pct_autosuficiencia:.0f}%", ha='center', va='center', fontsize=22, fontweight='bold', color='#27ae60')
     ax_dona.text(0, -0.18, "AUTOSUFICIENCIA", ha='center', va='center', fontsize=8, color='#555')
     ax_dona.set_title('Cobertura Energética Proyectada', fontsize=10, fontweight='bold')
-    ax_dona.legend(['Energía Solar', 'Red (CNEL)'], loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=8, frameon=False)
+    # Nota: sin pdf.legend() externa a los ejes -> evita que el bbox_inches='tight' agrande la imagen
+    # de forma impredecible. La leyenda se dibuja aparte, directamente en el PDF (ver más abajo).
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp2:
         plt.savefig(tmp2.name, dpi=200, bbox_inches='tight')
         ruta_dona = tmp2.name
     plt.close(fig_dona)
     archivos_temp.append(ruta_dona)
 
-    pdf.image(ruta_hist, x=15, y=y_seccion1, w=86)
-    pdf.image(ruta_dona, x=109, y=y_seccion1, w=86)
+    alto_hist = _alto_imagen_mm(ruta_hist, ANCHO_COL)
+    alto_dona = _alto_imagen_mm(ruta_dona, ANCHO_COL)
+    alto_max_sec1 = max(alto_hist, alto_dona)
 
-    pdf.set_y(y_seccion1 + 65)
+    pdf.image(ruta_hist, x=15, y=y_seccion1, w=ANCHO_COL)
+    pdf.image(ruta_dona, x=109, y=y_seccion1, w=ANCHO_COL)
+
+    # Leyenda de la dona dibujada directamente en el PDF (posición fija y predecible)
+    y_leyenda = y_seccion1 + alto_dona + 2
+    pdf.set_fill_color(46, 204, 113)
+    pdf.rect(120, y_leyenda, 3, 3, 'F')
+    pdf.set_font('Arial', '', 8)
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_xy(124, y_leyenda - 1)
+    pdf.cell(30, 5, 'Energía Solar', 0, 0)
+    pdf.set_fill_color(189, 195, 199)
+    pdf.rect(160, y_leyenda, 3, 3, 'F')
+    pdf.set_xy(164, y_leyenda - 1)
+    pdf.cell(30, 5, 'Red (CNEL)', 0, 0)
+    pdf.set_text_color(0, 0, 0)
+
+    y_despues_sec1 = y_seccion1 + alto_max_sec1 + 8
+    pdf.set_y(y_despues_sec1)
     pdf.set_font('Arial', 'I', 8)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(90, 5, 'Análisis del consumo registrado en los últimos periodos.', 0, 0, 'C')
-    pdf.ln(12)
     pdf.set_text_color(0, 0, 0)
+    pdf.set_y(y_despues_sec1 + 12)
 
+    # --- SECCIÓN 2 ---
     dibujar_titulo_seccion(pdf, '2. IMPACTO ECONÓMICO Y REDUCCIÓN TARIFARIA')
     y_seccion2 = pdf.get_y()
 
     fig_tarifa, ax_tarifa = plt.subplots(figsize=(5, 3.2))
     barras = ax_tarifa.bar(['Red Eléctrica\n(CNEL)', 'Planta Solar\n(Latitud Solar)'], [costo_kwh, tarifa_nivelada], color=['#5d6d7e', '#2ecc71'])
+    ax_tarifa.set_ylim(0, max(costo_kwh, tarifa_nivelada) * 1.20)
     for b in barras:
         ax_tarifa.annotate(f"${b.get_height():.3f}", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
                             xytext=(0, 4), textcoords="offset points", ha='center', fontweight='bold')
     ax_tarifa.set_ylabel('Tarifa (USD/kWh)')
+    fig_tarifa.tight_layout()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp3:
         plt.savefig(tmp3.name, dpi=200, bbox_inches='tight')
         ruta_tarifa = tmp3.name
     plt.close(fig_tarifa)
     archivos_temp.append(ruta_tarifa)
 
-    pdf.image(ruta_tarifa, x=15, y=y_seccion2, w=90)
+    ANCHO_TARIFA = 90
+    alto_tarifa = _alto_imagen_mm(ruta_tarifa, ANCHO_TARIFA)
+    pdf.image(ruta_tarifa, x=15, y=y_seccion2, w=ANCHO_TARIFA)
 
+    ALTO_TARJETA = 24
     dibujar_tarjeta_metrica(
-        pdf, x=112, y=y_seccion2, w=83, h=24,
+        pdf, x=112, y=y_seccion2, w=83, h=ALTO_TARJETA,
         titulo='TARIFA ACTUAL (RED CNEL)', valor=f"${costo_kwh:.3f} / kWh",
         color_fondo=(230, 233, 236), color_borde=(150, 160, 170), color_texto=(70, 80, 90)
     )
     dibujar_tarjeta_metrica(
-        pdf, x=112, y=y_seccion2 + 30, w=83, h=24,
+        pdf, x=112, y=y_seccion2 + ALTO_TARJETA + 6, w=83, h=ALTO_TARJETA,
         titulo='TARIFA NIVELADA (PLANTA SOLAR)', valor=f"${tarifa_nivelada:.3f} / kWh",
         color_fondo=(230, 248, 240), color_borde=(46, 204, 113), color_texto=(39, 174, 96)
     )
+    alto_max_sec2 = max(alto_tarifa, ALTO_TARJETA * 2 + 6)
 
-    pdf.set_y(y_seccion2 + 70)
+    pdf.set_y(y_seccion2 + alto_max_sec2 + 8)
     pdf.set_font('Arial', 'B', 9.5)
     pdf.set_text_color(0, 0, 0)
     pdf.write(5, 'Conclusión Técnica: ')
