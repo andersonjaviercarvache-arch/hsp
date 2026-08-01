@@ -227,7 +227,13 @@ if archivo_planilla is not None:
     else:
         datos_planilla = extraer_datos_planilla(texto_planilla)
         with st.sidebar.expander("👁️ Vista previa de lo detectado", expanded=True):
-            st.json({k: v for k, v in datos_planilla.items() if v not in (None, [])} or {"detectado": "ningún dato reconocido"})
+            st.markdown(f"**Cliente:** {datos_planilla['cliente'] or '❌ No detectado'}")
+            st.markdown(f"**Contrato:** {datos_planilla['contrato'] or '❌ No detectado'}")
+            st.markdown(f"**Dirección:** {datos_planilla['direccion'] or '❌ No detectado'}")
+            st.markdown(f"**Monto:** {datos_planilla['valor_pagar'] if datos_planilla['valor_pagar'] is not None else '❌ No detectado'}")
+            st.markdown(f"**Consumo (kWh):** {datos_planilla['consumos_kwh'] or '❌ No detectado'}")
+            if not datos_planilla['cliente'] or not datos_planilla['contrato'] or not datos_planilla['direccion']:
+                st.caption("⚠️ Algún campo no se detectó — al aplicar, ese campo específico se deja tal cual estaba (no se borra). Si esto se repite con tus planillas, compárteme el texto para ajustar el patrón.")
         if st.sidebar.button("✅ Aplicar Datos de esta Planilla", key="btn_aplicar_planilla", use_container_width=True):
             if datos_planilla["cliente"]:
                 st.session_state.nombre_cliente = datos_planilla["cliente"]
