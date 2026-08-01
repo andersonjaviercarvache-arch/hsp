@@ -182,19 +182,20 @@ def extraer_datos_planilla(texto):
     monto_energia = _extraer_monto_energia(texto)
     valor_pagar = monto_energia if monto_energia is not None else _extraer_valor_total_respaldo(texto)
 
+    # Fecha del período facturado (para etiquetar el mes en la tabla histórica): busca "Fecha desde Fecha hasta"
+    # seguido de las dos fechas, y toma la segunda (fin del período = mes que se está facturando)
+    etiqueta_mes = None
+    m_fechas = re.search(r"Fecha\s*desde\s*Fecha\s*hasta[^\d]{0,40}(\d{2}[-/]\d{2}[-/]\d{4})\s+(\d{2}[-/]\d{2}[-/]\d{4})", texto, flags=re.IGNORECASE)
+    if m_fechas:
+        etiqueta_mes = m_fechas.group(2)
+
     return {
         "cliente": cliente,
         "contrato": contrato,
         "direccion": direccion,
         "valor_pagar": valor_pagar,
         "consumos_kwh": consumos,
-    }
-    return {
-        "cliente": _buscar_texto(r"(?:Nombre\s*del?\s*Cliente|Cliente)[:\s]+([A-ZÁÉÍÓÚÑ][^\n]{3,60})", texto),
-        "contrato": _buscar_texto(r"(?:N[uú]mero\s*de\s*Cuenta\s*Contrato|Cuenta\s*Contrato|N[°º]?\s*de?\s*Contrato|N[uú]mero\s*de\s*Suministro)[:\s#Nn°º]*([\w\-]{4,20})", texto),
-        "direccion": _buscar_texto(r"(?:Direcci[oó]n\s*del?\s*servicio|Direcci[oó]n)[:\s]+([^\n]{5,120})", texto),
-        "valor_pagar": _extraer_valor_pagar(texto),
-        "consumos_kwh": consumos,
+        "etiqueta_mes": etiqueta_mes,
     }
 
 
@@ -235,12 +236,30 @@ if archivo_planilla is not None:
             if datos_planilla["direccion"]:
                 st.session_state.ubicacion_cliente = datos_planilla["direccion"]
             if datos_planilla["consumos_kwh"]:
-                consumos_detectados = datos_planilla["consumos_kwh"]
-                st.session_state.tabla_historico = pd.DataFrame({
-                    "Mes": [f"Mes {i+1}" for i in range(len(consumos_detectados))],
-                    "Consumo (kWh)": consumos_detectados
-                })
-                st.session_state.consumo_mensual = round(sum(consumos_detectados) / len(consumos_detectados), 2)
+                # Cada planilla trae normalmente UN solo mes de consumo (el período facturado).
+                # Por eso se AGREGA como fila nueva a la tabla histórica en vez de reemplazarla,
+                # para ir acumulando el historial de varios meses a medida que subes más planillas.
+                consumo_mes = sum(datos_planilla["consumos_kwh"])  # si hay más de un valor en la misma planilla, se suman
+                etiqueta = datos_planilla.get("etiqueta_mes")
+
+                tabla_actual = st.session_state.tabla_historico
+                es_tabla_de_ejemplo = (
+                    len(tabla_actual) == 3
+                    and list(tabla_actual["Mes"]) == ["Mes 1", "Mes 2", "Mes 3"]
+                    and list(tabla_actual["Consumo (kWh)"]) == [737.0, 1044.0, 1228.0]
+                )
+                if es_tabla_de_ejemplo:
+                    tabla_actual = pd.DataFrame({"Mes": [], "Consumo (kWh)": []})
+
+                if not etiqueta:
+                    etiqueta = f"Mes {len(tabla_actual) + 1}"
+
+                fila_nueva = pd.DataFrame({"Mes": [etiqueta], "Consumo (kWh)": [consumo_mes]})
+                tabla_actualizada = pd.concat([tabla_actual, fila_nueva], ignore_index=True)
+                tabla_actualizada = tabla_actualizada.drop_duplicates(subset="Mes", keep="last").reset_index(drop=True)
+
+                st.session_state.tabla_historico = tabla_actualizada
+                st.session_state.consumo_mensual = round(tabla_actualizada["Consumo (kWh)"].mean(), 2)
             if datos_planilla["valor_pagar"]:
                 st.session_state.pago_planilla = datos_planilla["valor_pagar"]
             st.sidebar.success("✅ Datos aplicados — revisa los campos abajo.")
