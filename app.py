@@ -361,20 +361,31 @@ for _clave, _valor in valores_default.items():
     if _clave not in st.session_state:
         st.session_state[_clave] = _valor
 
-# --- SIDEBAR PASO 1: CARGA DE LA PLANILLA (debe ejecutarse ANTES que cualquier widget con las mismas claves) ---
-st.sidebar.header("📄 Paso 1: Sube tu Planilla Eléctrica")
-if not OCR_DISPONIBLE:
-    st.sidebar.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
+st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
 
-archivo_planilla = st.sidebar.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
+col_modo1, col_modo2 = st.columns([4, 1])
+with col_modo2:
+    st.toggle("🔧 Modo Manual", key="modo_manual", help="Muestra todos los controles avanzados para ajustar cada parámetro a mano.")
+
+if not st.session_state.modo_manual:
+    st.caption("Modo simple: sube tu planilla y las fotos del proyecto, y descarga la propuesta ya calculada. Activa el 'Modo Manual' si quieres ajustar los parámetros a mano.")
+
+st.divider()
+
+# --- SIDEBAR PASO 1: CARGA DE LA PLANILLA (debe ejecutarse ANTES que cualquier widget con las mismas claves) ---
+st.header("📄 Paso 1: Sube tu Planilla Eléctrica")
+if not OCR_DISPONIBLE:
+    st.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
+
+archivo_planilla = st.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
 
 if archivo_planilla is not None:
     texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
     if metodo_planilla == "fallo":
-        st.sidebar.error("No se pudo leer este archivo (ni texto ni OCR). Ingresa los valores manualmente abajo.")
+        st.error("No se pudo leer este archivo (ni texto ni OCR). Ingresa los valores manualmente abajo.")
     else:
         datos_planilla = extraer_datos_planilla(texto_planilla)
-        with st.sidebar.expander("👁️ Vista previa de lo detectado", expanded=True):
+        with st.expander("👁️ Vista previa de lo detectado", expanded=True):
             st.markdown(f"**Cliente:** {datos_planilla['cliente'] or '❌ No detectado'}")
             st.markdown(f"**Contrato:** {datos_planilla['contrato'] or '❌ No detectado'}")
             st.markdown(f"**Dirección:** {datos_planilla['direccion'] or '❌ No detectado'}")
@@ -382,7 +393,7 @@ if archivo_planilla is not None:
             st.markdown(f"**Consumo (kWh):** {datos_planilla['consumos_kwh'] or '❌ No detectado'}")
             if not datos_planilla['cliente'] or not datos_planilla['contrato'] or not datos_planilla['direccion']:
                 st.caption("⚠️ Algún campo no se detectó — al aplicar, ese campo específico se deja tal cual estaba (no se borra). Si esto se repite con tus planillas, compárteme el texto para ajustar el patrón.")
-        if st.sidebar.button("✅ Aplicar Datos de esta Planilla", key="btn_aplicar_planilla", use_container_width=True):
+        if st.button("✅ Aplicar Datos de esta Planilla", key="btn_aplicar_planilla", use_container_width=True):
             if datos_planilla["cliente"]:
                 st.session_state.nombre_cliente = datos_planilla["cliente"]
             if datos_planilla["contrato"]:
@@ -416,18 +427,18 @@ if archivo_planilla is not None:
                 st.session_state.consumo_mensual = round(tabla_actualizada["Consumo (kWh)"].mean(), 2)
             if datos_planilla["valor_pagar"]:
                 st.session_state.pago_planilla = datos_planilla["valor_pagar"]
-            st.sidebar.success("✅ Datos aplicados — revisa los campos abajo.")
+            st.success("✅ Datos aplicados — revisa los campos abajo.")
             st.rerun()
 
 # --- SIDEBAR: INFORMACIÓN DEL CLIENTE (solo en Modo Manual) ---
 if st.session_state.modo_manual:
-    st.sidebar.header("📋 Información del Cliente")
-    nombre_cliente = st.sidebar.text_input("Nombre del Cliente", key="nombre_cliente")
-    n_proyecto = st.sidebar.text_input("Número de Proyecto", key="n_proyecto")
-    numero_contrato = st.sidebar.text_input("N° de Contrato / Cuenta", key="numero_contrato")
-    ubicacion_cliente = st.sidebar.text_input("📍 Ubicación / Dirección del Proyecto", key="ubicacion_cliente")
-    tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"], key="tipo_proyecto")
-    vendedor = st.sidebar.text_input("Asesor Comercial", key="vendedor")
+    st.header("📋 Información del Cliente")
+    nombre_cliente = st.text_input("Nombre del Cliente", key="nombre_cliente")
+    n_proyecto = st.text_input("Número de Proyecto", key="n_proyecto")
+    numero_contrato = st.text_input("N° de Contrato / Cuenta", key="numero_contrato")
+    ubicacion_cliente = st.text_input("📍 Ubicación / Dirección del Proyecto", key="ubicacion_cliente")
+    tipo_proyecto = st.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"], key="tipo_proyecto")
+    vendedor = st.text_input("Asesor Comercial", key="vendedor")
 else:
     nombre_cliente = st.session_state.nombre_cliente
     n_proyecto = st.session_state.n_proyecto
@@ -438,8 +449,8 @@ else:
 
 # --- SIDEBAR: METEOROLOGÍA (solo en Modo Manual) ---
 if st.session_state.modo_manual:
-    st.sidebar.header("🌐 Meteorología")
-    usar_tiempo_real = st.sidebar.checkbox(
+    st.header("🌐 Meteorología")
+    usar_tiempo_real = st.checkbox(
         "Usar meteorología en tiempo real (NASA POWER)", key="usar_tiempo_real",
         help="Consulta climatología satelital multi-anual real por coordenadas. Si falla la conexión, se usan valores de referencia locales."
     )
@@ -448,12 +459,12 @@ else:
 
 # --- SIDEBAR: PARÁMETROS - HOJA PERFIL DE CONSUMO (solo en Modo Manual) ---
 if st.session_state.modo_manual:
-    st.sidebar.header("⚙️ Parámetros - Hoja Perfil de Consumo")
-    pct_autosuficiencia = st.sidebar.slider(
+    st.header("⚙️ Parámetros - Hoja Perfil de Consumo")
+    pct_autosuficiencia = st.slider(
         "% Autosuficiencia Solar (Cobertura)", min_value=0.0, max_value=100.0, step=0.5, key="pct_autosuficiencia",
         help="Porcentaje del consumo que cubrirá la planta solar. El resto se muestra como aporte de la red."
     )
-    potencia_manual = st.sidebar.number_input(
+    potencia_manual = st.number_input(
         "Potencia a Instalar Manual (kWp)", min_value=0.0, step=0.1, key="potencia_manual",
         help="Déjalo en 0 para usar la potencia sugerida automáticamente calculada. Si ingresas un valor, este sobreescribe la sugerida en todos los cálculos."
     )
@@ -464,12 +475,12 @@ pct_aporte_red = 100.0 - pct_autosuficiencia
 
 # --- SIDEBAR: COMPONENTES DEL SISTEMA (solo en Modo Manual) ---
 if st.session_state.modo_manual:
-    st.sidebar.header("🔧 Componentes del Sistema")
-    potencia_panel_wp = st.sidebar.number_input(
+    st.header("🔧 Componentes del Sistema")
+    potencia_panel_wp = st.number_input(
         "Potencia por Panel (Wp)", min_value=100.0, max_value=1000.0, step=5.0, key="potencia_panel_wp",
         help="Potencia nominal de un solo panel. Se usa para calcular el número de módulos necesarios."
     )
-    area_panel_m2 = st.sidebar.number_input(
+    area_panel_m2 = st.number_input(
         "Área por Panel (m²)", min_value=1.0, max_value=5.0, step=0.01, key="area_panel_m2",
         help="Área física de un solo panel (típico ~2.6-2.8 m² en paneles grandes de 600+ Wp)."
     )
@@ -478,15 +489,15 @@ else:
     area_panel_m2 = st.session_state.area_panel_m2
 
 # --- SIDEBAR: FOTOS ESPECÍFICAS DEL PROYECTO (editables, distintas para cada cliente) ---
-st.sidebar.header("📷 Fotos de este Proyecto")
-st.sidebar.caption("A diferencia de 'Casos de éxito' (fijas), estas fotos son propias de cada techo/proyecto.")
-foto_ahorro_subida = st.sidebar.file_uploader(
+st.header("📷 Fotos de este Proyecto")
+st.caption("A diferencia de 'Casos de éxito' (fijas), estas fotos son propias de cada techo/proyecto.")
+foto_ahorro_subida = st.file_uploader(
     "Foto del techo (página Propuesta de Ahorro)", type=["jpg", "jpeg", "png"], key="uploader_foto_ahorro"
 )
-foto_cubierta_antes_subida = st.sidebar.file_uploader(
+foto_cubierta_antes_subida = st.file_uploader(
     "Foto Distribución a Cubierta — Antes", type=["jpg", "jpeg", "png"], key="uploader_cubierta_antes"
 )
-foto_cubierta_despues_subida = st.sidebar.file_uploader(
+foto_cubierta_despues_subida = st.file_uploader(
     "Foto Distribución a Cubierta — Después", type=["jpg", "jpeg", "png"], key="uploader_cubierta_despues"
 )
 
@@ -505,14 +516,15 @@ ruta_foto_ahorro_subida = _guardar_temporal(foto_ahorro_subida)
 ruta_foto_cubierta_antes_subida = _guardar_temporal(foto_cubierta_antes_subida)
 ruta_foto_cubierta_despues_subida = _guardar_temporal(foto_cubierta_despues_subida)
 
-st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
-
-col_modo1, col_modo2 = st.columns([4, 1])
-with col_modo2:
-    st.toggle("🔧 Modo Manual", key="modo_manual", help="Muestra todos los controles avanzados para ajustar cada parámetro a mano.")
-
-if not st.session_state.modo_manual:
-    st.caption("Modo simple: sube tu planilla y las fotos del proyecto, y descarga la propuesta ya calculada. Activa el 'Modo Manual' si quieres ajustar los parámetros a mano.")
+st.header("💵 Consumo y Costo de Energía")
+cc1, cc2, cc3 = st.columns(3)
+with cc1:
+    consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", key="consumo_mensual")
+with cc2:
+    pago_planilla = st.number_input("💵 Planilla USD/mes", key="pago_planilla")
+with cc3:
+    costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
+    st.metric("Costo por kWh", f"${costo_kwh:.4f}")
 
 # --- DIAGNÓSTICO: verificar que la carpeta assets/ esté completa (logo) ---
 _faltantes = [f for f in ARCHIVOS_ASSETS_REQUERIDOS if not os.path.exists(_ruta_activo(f))]
@@ -558,26 +570,18 @@ else:
     suma_hist = sum(valores_hist)
     promedio_hist = suma_hist / len(valores_hist) if valores_hist else 0
 
-# --- BLOQUE 1: PARÁMETROS TÉCNICOS ---
+# --- BLOQUE 1: PARÁMETROS TÉCNICOS ADICIONALES (solo Modo Manual) ---
 if st.session_state.modo_manual:
     with st.container():
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col4, col5 = st.columns(3)
         with col1:
             ciudad_sel = st.selectbox("📍 Ubicación", list(ciudades_data.keys()), key="ciudad_sel")
-        with col2:
-            consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", key="consumo_mensual")
-        with col3:
-            pago_planilla = st.number_input("💵 Planilla USD/mes", key="pago_planilla")
-            costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
         with col4:
             deg_y1 = st.number_input("📉 Deg. Año 1 (%)", key="deg_y1_pct") / 100
         with col5:
             atenuacion = st.number_input("📉 Aten. Anual (%)", key="atenuacion_pct") / 100
 else:
     ciudad_sel = st.session_state.ciudad_sel
-    consumo_mensual = st.session_state.consumo_mensual
-    pago_planilla = st.session_state.pago_planilla
-    costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
     deg_y1 = st.session_state.deg_y1_pct / 100
     atenuacion = st.session_state.atenuacion_pct / 100
 
@@ -594,7 +598,7 @@ if usar_tiempo_real:
         hsp_avg = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
         temp_prom = ciudades_data[ciudad_sel]["temp"]
         fuente_meteo = "Valores de referencia locales (sin conexión a NASA POWER)"
-        st.sidebar.warning("⚠️ No se pudo conectar con NASA POWER. Usando valores de referencia locales.")
+        st.warning("⚠️ No se pudo conectar con NASA POWER. Usando valores de referencia locales.")
 else:
     hsp_avg = sum(ciudades_data[ciudad_sel]["hsp"]) / 12
     temp_prom = ciudades_data[ciudad_sel]["temp"]
@@ -1464,4 +1468,3 @@ with col_desc2:
         "📥 Descargar Propuesta PDF", data=_pdf_generado, file_name=f"Propuesta_{nombre_cliente}.pdf",
         use_container_width=True, type="primary"
     )
-st.sidebar.download_button("📥 Descargar Propuesta PDF", data=_pdf_generado, file_name=f"Propuesta_{nombre_cliente}.pdf")
