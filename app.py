@@ -258,7 +258,83 @@ def extraer_datos_planilla(texto):
     }
 
 
-st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout="wide")
+st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout="wide", page_icon="☀️")
+
+st.markdown("""
+<style>
+    /* --- Barra lateral oscura estilo dashboard --- */
+    section[data-testid="stSidebar"] {
+        background-color: #1a2332;
+    }
+    section[data-testid="stSidebar"] * {
+        color: #e8ecf1 !important;
+    }
+    section[data-testid="stSidebar"] .stTextInput input,
+    section[data-testid="stSidebar"] .stNumberInput input,
+    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] {
+        background-color: #2a3648 !important;
+        color: #ffffff !important;
+        border-radius: 6px;
+    }
+    section[data-testid="stSidebar"] hr {
+        border-color: #37455a;
+    }
+
+    /* --- Encabezado principal --- */
+    h1 {
+        color: #1a2332;
+        font-weight: 700 !important;
+    }
+
+    /* --- Tarjetas de indicadores (KPI) estilo dashboard --- */
+    .kpi-card {
+        border-radius: 12px;
+        padding: 18px 20px;
+        color: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        height: 100%;
+    }
+    .kpi-card .kpi-label {
+        font-size: 12.5px;
+        opacity: 0.9;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .kpi-card .kpi-value {
+        font-size: 26px;
+        font-weight: 700;
+        margin-top: 4px;
+    }
+    .kpi-blue   { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+    .kpi-green  { background: linear-gradient(135deg, #16a34a, #15803d); }
+    .kpi-orange { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .kpi-navy   { background: linear-gradient(135deg, #334155, #1e293b); }
+
+    /* --- Botón principal de descarga --- */
+    .stDownloadButton button[kind="primary"] {
+        background-color: #2563eb;
+        border-radius: 8px;
+        font-weight: 600;
+        padding: 0.7em 0;
+    }
+
+    /* --- Contenedores más limpios --- */
+    div[data-testid="stExpander"] {
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+def _tarjeta_kpi(columna, etiqueta, valor, color="kpi-blue"):
+    columna.markdown(
+        f'<div class="kpi-card {color}"><div class="kpi-label">{etiqueta}</div>'
+        f'<div class="kpi-value">{valor}</div></div>',
+        unsafe_allow_html=True
+    )
+
 
 valores_default = {
     "nombre_cliente": "Martillo Jara Angel Cristobal",
@@ -1370,6 +1446,15 @@ def generar_pdf():
         return salida_pdf.encode('latin-1')
     return bytes(salida_pdf)
 
+
+st.markdown("#### 📊 Resumen del Proyecto")
+ahorro_vida_util = acumulados[-1] if acumulados else 0.0
+kc1, kc2, kc3, kc4 = st.columns(4)
+_tarjeta_kpi(kc1, "Potencia Instalada", f"{potencia_final:.1f} kWp", "kpi-blue")
+_tarjeta_kpi(kc2, "Autosuficiencia Solar", f"{pct_autosuficiencia:.0f}%", "kpi-green")
+_tarjeta_kpi(kc3, "Ahorro en Vida Útil", f"${ahorro_vida_util:,.0f}", "kpi-orange")
+_tarjeta_kpi(kc4, "Retorno de Inversión", f"{payback_exacto:.1f} años" if payback_exacto else "N/A", "kpi-navy")
+st.write("")
 
 st.divider()
 _pdf_generado = generar_pdf()
