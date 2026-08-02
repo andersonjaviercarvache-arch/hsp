@@ -262,54 +262,81 @@ st.set_page_config(page_title="Latitud Solar - Generador de Propuestas", layout=
 
 st.markdown("""
 <style>
-    /* --- Barra lateral oscura estilo dashboard --- */
+    /* --- Tema oscuro en toda la app --- */
+    .stApp {
+        background-color: #0d1117;
+    }
+    [data-testid="stAppViewContainer"] * {
+        color: #e8ecf1;
+    }
     section[data-testid="stSidebar"] {
-        background-color: #1a2332;
-    }
-    section[data-testid="stSidebar"] * {
-        color: #e8ecf1 !important;
-    }
-    section[data-testid="stSidebar"] .stTextInput input,
-    section[data-testid="stSidebar"] .stNumberInput input,
-    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] {
-        background-color: #2a3648 !important;
-        color: #ffffff !important;
-        border-radius: 6px;
-    }
-    section[data-testid="stSidebar"] hr {
-        border-color: #37455a;
+        background-color: #0d1117;
     }
 
     /* --- Encabezado principal --- */
     h1 {
-        color: #1a2332;
+        color: #ffffff !important;
         font-weight: 700 !important;
     }
+    h2, h3, h4 {
+        color: #ffffff !important;
+    }
 
-    /* --- Tarjetas de indicadores (KPI) estilo dashboard --- */
+    /* --- Paneles con borde estilo tarjeta (Subida de Datos / KPIs) --- */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #161b26;
+        border: 1px solid #2a3548 !important;
+        border-radius: 14px;
+        padding: 6px;
+    }
+
+    /* --- Campos de entrada --- */
+    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"],
+    .stTextArea textarea {
+        background-color: #232b3b !important;
+        color: #ffffff !important;
+        border-radius: 6px;
+        border: 1px solid #38445a !important;
+    }
+
+    /* --- Subida de archivos --- */
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #1c2433;
+        border: 1.5px dashed #3d4a63;
+        border-radius: 10px;
+    }
+    [data-testid="stFileUploaderDropzone"] button {
+        background-color: #2a3648;
+        color: #ffffff;
+        border-radius: 6px;
+    }
+
+    /* --- Tarjetas de indicadores (KPI) grandes, estilo dashboard --- */
     .kpi-card {
-        border-radius: 12px;
-        padding: 18px 20px;
+        border-radius: 14px;
+        padding: 22px 24px;
         color: white;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        background-color: #1c2433;
+        border: 1px solid #2a3548;
         height: 100%;
     }
     .kpi-card .kpi-label {
-        font-size: 12.5px;
-        opacity: 0.9;
-        font-weight: 500;
+        font-size: 13px;
+        opacity: 0.85;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.3px;
+        letter-spacing: 0.4px;
     }
     .kpi-card .kpi-value {
-        font-size: 26px;
-        font-weight: 700;
-        margin-top: 4px;
+        font-size: 34px;
+        font-weight: 800;
+        margin-top: 8px;
+        color: #ffffff;
     }
-    .kpi-blue   { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
-    .kpi-green  { background: linear-gradient(135deg, #16a34a, #15803d); }
-    .kpi-orange { background: linear-gradient(135deg, #f59e0b, #d97706); }
-    .kpi-navy   { background: linear-gradient(135deg, #334155, #1e293b); }
+    .kpi-blue   .kpi-value { color: #4f9eff; }
+    .kpi-green  .kpi-value { color: #34d399; }
+    .kpi-orange .kpi-value { color: #fbbf24; }
+    .kpi-navy   .kpi-value { color: #f1f5f9; }
 
     /* --- Botón principal de descarga --- */
     .stDownloadButton button[kind="primary"] {
@@ -322,7 +349,8 @@ st.markdown("""
     /* --- Contenedores más limpios --- */
     div[data-testid="stExpander"] {
         border-radius: 10px;
-        border: 1px solid #e5e7eb;
+        border: 1px solid #2a3548;
+        background-color: #161b26;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -370,136 +398,84 @@ with col_modo2:
 if not st.session_state.modo_manual:
     st.caption("Modo simple: sube tu planilla y las fotos del proyecto, y descarga la propuesta ya calculada. Activa el 'Modo Manual' si quieres ajustar los parámetros a mano.")
 
-st.divider()
+st.write("")
+col_izq, col_der = st.columns(2)
 
-# --- SIDEBAR PASO 1: CARGA DE LA PLANILLA (debe ejecutarse ANTES que cualquier widget con las mismas claves) ---
-st.header("📄 Paso 1: Sube tu Planilla Eléctrica")
-if not OCR_DISPONIBLE:
-    st.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
+panel_izq = col_izq.container(border=True)
+panel_der = col_der.container(border=True)  # Se llena más abajo, una vez calculados los KPIs
 
-archivo_planilla = st.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
+with panel_izq:
+    st.markdown("### 📤 Subida de Datos del Proyecto")
 
-if archivo_planilla is not None:
-    texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
-    if metodo_planilla == "fallo":
-        st.error("No se pudo leer este archivo (ni texto ni OCR). Ingresa los valores manualmente abajo.")
-    else:
-        datos_planilla = extraer_datos_planilla(texto_planilla)
-        with st.expander("👁️ Vista previa de lo detectado", expanded=True):
-            st.markdown(f"**Cliente:** {datos_planilla['cliente'] or '❌ No detectado'}")
-            st.markdown(f"**Contrato:** {datos_planilla['contrato'] or '❌ No detectado'}")
-            st.markdown(f"**Dirección:** {datos_planilla['direccion'] or '❌ No detectado'}")
-            st.markdown(f"**Monto:** {datos_planilla['valor_pagar'] if datos_planilla['valor_pagar'] is not None else '❌ No detectado'}")
-            st.markdown(f"**Consumo (kWh):** {datos_planilla['consumos_kwh'] or '❌ No detectado'}")
-            if not datos_planilla['cliente'] or not datos_planilla['contrato'] or not datos_planilla['direccion']:
-                st.caption("⚠️ Algún campo no se detectó — al aplicar, ese campo específico se deja tal cual estaba (no se borra). Si esto se repite con tus planillas, compárteme el texto para ajustar el patrón.")
-        if st.button("✅ Aplicar Datos de esta Planilla", key="btn_aplicar_planilla", use_container_width=True):
-            if datos_planilla["cliente"]:
-                st.session_state.nombre_cliente = datos_planilla["cliente"]
-            if datos_planilla["contrato"]:
-                st.session_state.numero_contrato = datos_planilla["contrato"]
-            if datos_planilla["direccion"]:
-                st.session_state.ubicacion_cliente = datos_planilla["direccion"]
-            if datos_planilla["consumos_kwh"]:
-                # Cada planilla trae normalmente UN solo mes de consumo (el período facturado).
-                # Por eso se AGREGA como fila nueva a la tabla histórica en vez de reemplazarla,
-                # para ir acumulando el historial de varios meses a medida que subes más planillas.
-                consumo_mes = sum(datos_planilla["consumos_kwh"])  # si hay más de un valor en la misma planilla, se suman
-                etiqueta = datos_planilla.get("etiqueta_mes")
+    # --- CARGA DE LA PLANILLA (debe ejecutarse ANTES que cualquier widget con las mismas claves) ---
+    st.markdown("**📄 Planilla Eléctrica**")
+    if not OCR_DISPONIBLE:
+        st.caption("⚠️ OCR no disponible en este entorno (falta tesseract/poppler). Solo se procesarán PDFs con texto seleccionable; fotos o escaneos deberán ingresarse a mano.")
 
-                tabla_actual = st.session_state.tabla_historico
-                es_tabla_de_ejemplo = (
-                    len(tabla_actual) == 3
-                    and list(tabla_actual["Mes"]) == ["Mes 1", "Mes 2", "Mes 3"]
-                    and list(tabla_actual["Consumo (kWh)"]) == [737.0, 1044.0, 1228.0]
-                )
-                if es_tabla_de_ejemplo:
-                    tabla_actual = pd.DataFrame({"Mes": [], "Consumo (kWh)": []})
+    archivo_planilla = st.file_uploader("Sube la planilla (PDF, JPG o PNG)", type=["pdf", "jpg", "jpeg", "png"], key="uploader_planilla")
 
-                if not etiqueta:
-                    etiqueta = f"Mes {len(tabla_actual) + 1}"
+    if archivo_planilla is not None:
+        texto_planilla, metodo_planilla = extraer_texto_archivo(archivo_planilla)
+        if metodo_planilla == "fallo":
+            st.error("No se pudo leer este archivo (ni texto ni OCR). Ingresa los valores manualmente abajo.")
+        else:
+            datos_planilla = extraer_datos_planilla(texto_planilla)
+            with st.expander("👁️ Vista previa de lo detectado", expanded=True):
+                st.markdown(f"**Cliente:** {datos_planilla['cliente'] or '❌ No detectado'}")
+                st.markdown(f"**Contrato:** {datos_planilla['contrato'] or '❌ No detectado'}")
+                st.markdown(f"**Dirección:** {datos_planilla['direccion'] or '❌ No detectado'}")
+                st.markdown(f"**Monto:** {datos_planilla['valor_pagar'] if datos_planilla['valor_pagar'] is not None else '❌ No detectado'}")
+                st.markdown(f"**Consumo (kWh):** {datos_planilla['consumos_kwh'] or '❌ No detectado'}")
+                if not datos_planilla['cliente'] or not datos_planilla['contrato'] or not datos_planilla['direccion']:
+                    st.caption("⚠️ Algún campo no se detectó — al aplicar, ese campo específico se deja tal cual estaba (no se borra). Si esto se repite con tus planillas, compárteme el texto para ajustar el patrón.")
+            if st.button("✅ Aplicar Datos de esta Planilla", key="btn_aplicar_planilla", use_container_width=True):
+                if datos_planilla["cliente"]:
+                    st.session_state.nombre_cliente = datos_planilla["cliente"]
+                if datos_planilla["contrato"]:
+                    st.session_state.numero_contrato = datos_planilla["contrato"]
+                if datos_planilla["direccion"]:
+                    st.session_state.ubicacion_cliente = datos_planilla["direccion"]
+                if datos_planilla["consumos_kwh"]:
+                    # Cada planilla trae normalmente UN solo mes de consumo (el período facturado).
+                    # Por eso se AGREGA como fila nueva a la tabla histórica en vez de reemplazarla,
+                    # para ir acumulando el historial de varios meses a medida que subes más planillas.
+                    consumo_mes = sum(datos_planilla["consumos_kwh"])  # si hay más de un valor en la misma planilla, se suman
+                    etiqueta = datos_planilla.get("etiqueta_mes")
 
-                fila_nueva = pd.DataFrame({"Mes": [etiqueta], "Consumo (kWh)": [consumo_mes]})
-                tabla_actualizada = pd.concat([tabla_actual, fila_nueva], ignore_index=True)
-                tabla_actualizada = tabla_actualizada.drop_duplicates(subset="Mes", keep="last").reset_index(drop=True)
+                    tabla_actual = st.session_state.tabla_historico
+                    es_tabla_de_ejemplo = (
+                        len(tabla_actual) == 3
+                        and list(tabla_actual["Mes"]) == ["Mes 1", "Mes 2", "Mes 3"]
+                        and list(tabla_actual["Consumo (kWh)"]) == [737.0, 1044.0, 1228.0]
+                    )
+                    if es_tabla_de_ejemplo:
+                        tabla_actual = pd.DataFrame({"Mes": [], "Consumo (kWh)": []})
 
-                st.session_state.tabla_historico = tabla_actualizada
-                st.session_state.consumo_mensual = round(tabla_actualizada["Consumo (kWh)"].mean(), 2)
-            if datos_planilla["valor_pagar"]:
-                st.session_state.pago_planilla = datos_planilla["valor_pagar"]
-            st.success("✅ Datos aplicados — revisa los campos abajo.")
-            st.rerun()
+                    if not etiqueta:
+                        etiqueta = f"Mes {len(tabla_actual) + 1}"
 
-# --- SIDEBAR: INFORMACIÓN DEL CLIENTE (solo en Modo Manual) ---
-if st.session_state.modo_manual:
-    st.header("📋 Información del Cliente")
-    nombre_cliente = st.text_input("Nombre del Cliente", key="nombre_cliente")
-    n_proyecto = st.text_input("Número de Proyecto", key="n_proyecto")
-    numero_contrato = st.text_input("N° de Contrato / Cuenta", key="numero_contrato")
-    ubicacion_cliente = st.text_input("📍 Ubicación / Dirección del Proyecto", key="ubicacion_cliente")
-    tipo_proyecto = st.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"], key="tipo_proyecto")
-    vendedor = st.text_input("Asesor Comercial", key="vendedor")
-else:
-    nombre_cliente = st.session_state.nombre_cliente
-    n_proyecto = st.session_state.n_proyecto
-    numero_contrato = st.session_state.numero_contrato
-    ubicacion_cliente = st.session_state.ubicacion_cliente
-    tipo_proyecto = st.session_state.tipo_proyecto
-    vendedor = st.session_state.vendedor
+                    fila_nueva = pd.DataFrame({"Mes": [etiqueta], "Consumo (kWh)": [consumo_mes]})
+                    tabla_actualizada = pd.concat([tabla_actual, fila_nueva], ignore_index=True)
+                    tabla_actualizada = tabla_actualizada.drop_duplicates(subset="Mes", keep="last").reset_index(drop=True)
 
-# --- SIDEBAR: METEOROLOGÍA (solo en Modo Manual) ---
-if st.session_state.modo_manual:
-    st.header("🌐 Meteorología")
-    usar_tiempo_real = st.checkbox(
-        "Usar meteorología en tiempo real (NASA POWER)", key="usar_tiempo_real",
-        help="Consulta climatología satelital multi-anual real por coordenadas. Si falla la conexión, se usan valores de referencia locales."
+                    st.session_state.tabla_historico = tabla_actualizada
+                    st.session_state.consumo_mensual = round(tabla_actualizada["Consumo (kWh)"].mean(), 2)
+                if datos_planilla["valor_pagar"]:
+                    st.session_state.pago_planilla = datos_planilla["valor_pagar"]
+                st.success("✅ Datos aplicados — revisa los campos abajo.")
+                st.rerun()
+
+    st.markdown("**📷 Fotos del Proyecto**")
+    st.caption("A diferencia de 'Casos de éxito' (fijas), estas fotos son propias de cada techo/proyecto.")
+    foto_ahorro_subida = st.file_uploader(
+        "Foto del techo (página Propuesta de Ahorro)", type=["jpg", "jpeg", "png"], key="uploader_foto_ahorro"
     )
-else:
-    usar_tiempo_real = st.session_state.usar_tiempo_real
-
-# --- SIDEBAR: PARÁMETROS - HOJA PERFIL DE CONSUMO (solo en Modo Manual) ---
-if st.session_state.modo_manual:
-    st.header("⚙️ Parámetros - Hoja Perfil de Consumo")
-    pct_autosuficiencia = st.slider(
-        "% Autosuficiencia Solar (Cobertura)", min_value=0.0, max_value=100.0, step=0.5, key="pct_autosuficiencia",
-        help="Porcentaje del consumo que cubrirá la planta solar. El resto se muestra como aporte de la red."
+    foto_cubierta_antes_subida = st.file_uploader(
+        "Foto Distribución a Cubierta — Antes", type=["jpg", "jpeg", "png"], key="uploader_cubierta_antes"
     )
-    potencia_manual = st.number_input(
-        "Potencia a Instalar Manual (kWp)", min_value=0.0, step=0.1, key="potencia_manual",
-        help="Déjalo en 0 para usar la potencia sugerida automáticamente calculada. Si ingresas un valor, este sobreescribe la sugerida en todos los cálculos."
+    foto_cubierta_despues_subida = st.file_uploader(
+        "Foto Distribución a Cubierta — Después", type=["jpg", "jpeg", "png"], key="uploader_cubierta_despues"
     )
-else:
-    pct_autosuficiencia = st.session_state.pct_autosuficiencia
-    potencia_manual = st.session_state.potencia_manual
-pct_aporte_red = 100.0 - pct_autosuficiencia
-
-# --- SIDEBAR: COMPONENTES DEL SISTEMA (solo en Modo Manual) ---
-if st.session_state.modo_manual:
-    st.header("🔧 Componentes del Sistema")
-    potencia_panel_wp = st.number_input(
-        "Potencia por Panel (Wp)", min_value=100.0, max_value=1000.0, step=5.0, key="potencia_panel_wp",
-        help="Potencia nominal de un solo panel. Se usa para calcular el número de módulos necesarios."
-    )
-    area_panel_m2 = st.number_input(
-        "Área por Panel (m²)", min_value=1.0, max_value=5.0, step=0.01, key="area_panel_m2",
-        help="Área física de un solo panel (típico ~2.6-2.8 m² en paneles grandes de 600+ Wp)."
-    )
-else:
-    potencia_panel_wp = st.session_state.potencia_panel_wp
-    area_panel_m2 = st.session_state.area_panel_m2
-
-# --- SIDEBAR: FOTOS ESPECÍFICAS DEL PROYECTO (editables, distintas para cada cliente) ---
-st.header("📷 Fotos de este Proyecto")
-st.caption("A diferencia de 'Casos de éxito' (fijas), estas fotos son propias de cada techo/proyecto.")
-foto_ahorro_subida = st.file_uploader(
-    "Foto del techo (página Propuesta de Ahorro)", type=["jpg", "jpeg", "png"], key="uploader_foto_ahorro"
-)
-foto_cubierta_antes_subida = st.file_uploader(
-    "Foto Distribución a Cubierta — Antes", type=["jpg", "jpeg", "png"], key="uploader_cubierta_antes"
-)
-foto_cubierta_despues_subida = st.file_uploader(
-    "Foto Distribución a Cubierta — Después", type=["jpg", "jpeg", "png"], key="uploader_cubierta_despues"
-)
 
 
 def _guardar_temporal(archivo_subido):
@@ -515,6 +491,65 @@ def _guardar_temporal(archivo_subido):
 ruta_foto_ahorro_subida = _guardar_temporal(foto_ahorro_subida)
 ruta_foto_cubierta_antes_subida = _guardar_temporal(foto_cubierta_antes_subida)
 ruta_foto_cubierta_despues_subida = _guardar_temporal(foto_cubierta_despues_subida)
+
+# --- INFORMACIÓN DEL CLIENTE (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.divider()
+    st.header("📋 Información del Cliente")
+    nombre_cliente = st.text_input("Nombre del Cliente", key="nombre_cliente")
+    n_proyecto = st.text_input("Número de Proyecto", key="n_proyecto")
+    numero_contrato = st.text_input("N° de Contrato / Cuenta", key="numero_contrato")
+    ubicacion_cliente = st.text_input("📍 Ubicación / Dirección del Proyecto", key="ubicacion_cliente")
+    tipo_proyecto = st.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"], key="tipo_proyecto")
+    vendedor = st.text_input("Asesor Comercial", key="vendedor")
+else:
+    nombre_cliente = st.session_state.nombre_cliente
+    n_proyecto = st.session_state.n_proyecto
+    numero_contrato = st.session_state.numero_contrato
+    ubicacion_cliente = st.session_state.ubicacion_cliente
+    tipo_proyecto = st.session_state.tipo_proyecto
+    vendedor = st.session_state.vendedor
+
+# --- METEOROLOGÍA (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.header("🌐 Meteorología")
+    usar_tiempo_real = st.checkbox(
+        "Usar meteorología en tiempo real (NASA POWER)", key="usar_tiempo_real",
+        help="Consulta climatología satelital multi-anual real por coordenadas. Si falla la conexión, se usan valores de referencia locales."
+    )
+else:
+    usar_tiempo_real = st.session_state.usar_tiempo_real
+
+# --- PARÁMETROS - HOJA PERFIL DE CONSUMO (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.header("⚙️ Parámetros - Hoja Perfil de Consumo")
+    pct_autosuficiencia = st.slider(
+        "% Autosuficiencia Solar (Cobertura)", min_value=0.0, max_value=100.0, step=0.5, key="pct_autosuficiencia",
+        help="Porcentaje del consumo que cubrirá la planta solar. El resto se muestra como aporte de la red."
+    )
+    potencia_manual = st.number_input(
+        "Potencia a Instalar Manual (kWp)", min_value=0.0, step=0.1, key="potencia_manual",
+        help="Déjalo en 0 para usar la potencia sugerida automáticamente calculada. Si ingresas un valor, este sobreescribe la sugerida en todos los cálculos."
+    )
+else:
+    pct_autosuficiencia = st.session_state.pct_autosuficiencia
+    potencia_manual = st.session_state.potencia_manual
+pct_aporte_red = 100.0 - pct_autosuficiencia
+
+# --- COMPONENTES DEL SISTEMA (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.header("🔧 Componentes del Sistema")
+    potencia_panel_wp = st.number_input(
+        "Potencia por Panel (Wp)", min_value=100.0, max_value=1000.0, step=5.0, key="potencia_panel_wp",
+        help="Potencia nominal de un solo panel. Se usa para calcular el número de módulos necesarios."
+    )
+    area_panel_m2 = st.number_input(
+        "Área por Panel (m²)", min_value=1.0, max_value=5.0, step=0.01, key="area_panel_m2",
+        help="Área física de un solo panel (típico ~2.6-2.8 m² en paneles grandes de 600+ Wp)."
+    )
+else:
+    potencia_panel_wp = st.session_state.potencia_panel_wp
+    area_panel_m2 = st.session_state.area_panel_m2
 
 st.header("💵 Consumo y Costo de Energía")
 cc1, cc2, cc3 = st.columns(3)
@@ -1453,15 +1488,20 @@ def generar_pdf():
     return bytes(salida_pdf)
 
 
-st.markdown("#### 📊 Resumen del Proyecto")
 ahorro_vida_util = acumulados[-1] if acumulados else 0.0
-kc1, kc2, kc3, kc4 = st.columns(4)
-_tarjeta_kpi(kc1, "Potencia Instalada", f"{potencia_final:.1f} kWp", "kpi-blue")
-_tarjeta_kpi(kc2, "Autosuficiencia Solar", f"{pct_autosuficiencia:.0f}%", "kpi-green")
-_tarjeta_kpi(kc3, "Ahorro en Vida Útil", f"${ahorro_vida_util:,.0f}", "kpi-orange")
-_tarjeta_kpi(kc4, "Retorno de Inversión", f"{payback_exacto:.1f} años" if payback_exacto else "N/A", "kpi-navy")
-st.write("")
 
+with panel_der:
+    st.markdown("### 📈 KPIs Principales")
+    kc1, kc2 = st.columns(2)
+    _tarjeta_kpi(kc1, "Capacidad Sistema", f"{potencia_final:.1f} kWp", "kpi-blue")
+    _tarjeta_kpi(kc2, "Ahorro Estimado", f"${ahorro_vida_util:,.0f}", "kpi-green")
+    if st.session_state.modo_manual:
+        st.write("")
+        kc3, kc4 = st.columns(2)
+        _tarjeta_kpi(kc3, "Autosuficiencia Solar", f"{pct_autosuficiencia:.0f}%", "kpi-orange")
+        _tarjeta_kpi(kc4, "Retorno de Inversión", f"{payback_exacto:.1f} años" if payback_exacto else "N/A", "kpi-navy")
+
+st.write("")
 st.divider()
 _pdf_generado = generar_pdf()
 col_desc1, col_desc2, col_desc3 = st.columns([1, 2, 1])
