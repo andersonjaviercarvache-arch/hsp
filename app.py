@@ -47,13 +47,31 @@ def _imagen_segura(pdf, ruta, x, y, w=None, h=None):
     return False
 
 
+def _texto_pdf_seguro(texto):
+    """Limpia texto proveniente de fuentes externas (planillas OCR, entradas del usuario) para que
+    nunca rompa la generación del PDF por un caracter no soportado por la fuente Arial básica
+    (que solo admite Latin-1). Reemplaza los símbolos más comunes (guiones largos, comillas
+    tipográficas, viñetas, etc.) y descarta cualquier otro caracter no representable."""
+    if texto is None:
+        return ""
+    texto = str(texto)
+    reemplazos = {
+        "\u2014": "-", "\u2013": "-", "\u2018": "'", "\u2019": "'",
+        "\u201c": '"', "\u201d": '"', "\u2026": "...", "\u2022": "-",
+        "\u00a0": " ",
+    }
+    for buscado, reemplazo in reemplazos.items():
+        texto = texto.replace(buscado, reemplazo)
+    return texto.encode("latin-1", errors="replace").decode("latin-1")
+
+
 class PropuestaPDF(FPDF):
     """Agrega automáticamente, en TODAS las páginas, el pie de página de confidencialidad y número de hoja."""
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.set_text_color(130, 130, 130)
-        self.cell(0, 10, 'Latitud Solar — Propuesta confidencial, de uso exclusivo del destinatario.', 0, 0, 'C')
+        self.cell(0, 10, 'Latitud Solar - Propuesta confidencial, de uso exclusivo del destinatario.', 0, 0, 'C')
         self.set_y(-15)
         self.set_x(-25)
         self.set_font('Arial', '', 8)
@@ -807,7 +825,7 @@ def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_
     texto_intro = (
         f"Propuesta técnica y económica para la implementación de una planta solar fotovoltaica On-Grid "
         f"con respaldo de energía, diseñada para optimizar los costos energéticos y promover la sostenibilidad "
-        f"de la residencia de {nombre_cliente.upper()}."
+        f"de la residencia de {_texto_pdf_seguro(nombre_cliente).upper()}."
     )
     pdf.multi_cell(0, 6, texto_intro)
     pdf.ln(4)
@@ -1177,13 +1195,13 @@ def generar_pdf():
     pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 8, 'DATOS DEL PROYECTO', 0, 1, 'L')
     pdf.set_font('Arial', '', 10)
-    pdf.cell(95, 7, f'Cliente: {nombre_cliente}', 0, 0)
+    pdf.cell(95, 7, f'Cliente: {_texto_pdf_seguro(nombre_cliente)}', 0, 0)
     pdf.cell(0, 7, f'Ciudad: {ciudad_sel}', 0, 1)
     pdf.cell(95, 7, f'Proyecto: {n_proyecto}', 0, 0)
-    pdf.cell(0, 7, f'N° Contrato: {numero_contrato if numero_contrato else "N/A"}', 0, 1)
+    pdf.cell(0, 7, f'N° Contrato: {_texto_pdf_seguro(numero_contrato) if numero_contrato else "N/A"}', 0, 1)
     pdf.cell(95, 7, f'Costo kWh: ${costo_kwh:.4f}', 0, 0)
     pdf.cell(0, 7, f'Potencia Instalada: {potencia_final:.2f} kWp', 0, 1)
-    pdf.cell(0, 7, f'Ubicación: {ubicacion_cliente if ubicacion_cliente else "N/A"}', 0, 1)
+    pdf.cell(0, 7, f'Ubicación: {_texto_pdf_seguro(ubicacion_cliente) if ubicacion_cliente else "N/A"}', 0, 1)
 
     pdf.ln(8)
     pdf.set_fill_color(240, 240, 240)
