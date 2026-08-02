@@ -605,10 +605,11 @@ else:
     fuente_meteo = "Valores de referencia locales (Atlas Solar Ecuador / estimación)"
 
 pr_calculado = 0.82 - (max(0, temp_prom - 15) * 0.0045)
-potencia_sug = consumo_mensual / (hsp_avg * pr_calculado * 30.44)
+potencia_sug = (consumo_mensual / (hsp_avg * pr_calculado * 30.44)) if consumo_mensual > 0 else 0.1
 
 # Potencia final: usa la manual si fue ingresada (> 0), si no, la sugerida
 potencia_final = potencia_manual if potencia_manual > 0 else potencia_sug
+potencia_final = max(potencia_final, 0.1)  # nunca 0: evita inversión/generación nulas y divisiones por cero más adelante
 generacion_y1 = potencia_final * hsp_avg * pr_calculado * 365
 
 numero_paneles = math.ceil((potencia_final * 1000) / potencia_panel_wp) if potencia_panel_wp > 0 else 0
@@ -669,7 +670,7 @@ for año in range(1, 31):
     beneficio_extra = ahorro_trib_anual_usd if (año <= años_beneficio and tipo_proyecto == "Comercial") else 0
     total_año = ahorro_energetico + beneficio_extra
 
-    if payback_exacto is None and (balance_acumulado + total_año) >= inv_final:
+    if payback_exacto is None and total_año > 0 and (balance_acumulado + total_año) >= inv_final:
         remand_por_recuperar = inv_final - balance_acumulado
         payback_exacto = (año - 1) + (remand_por_recuperar / total_año)
 
@@ -1354,9 +1355,10 @@ def generar_pdf():
     pdf.cell(0, 8, 'RESUMEN FINANCIERO DE RECUPERACIÓN', 0, 1, 'L', fill=True)
     pdf.ln(2)
 
+    texto_payback = f"{payback_exacto:.1f} años" if payback_exacto else "más de 30 años"
     if tipo_proyecto == "Comercial":
         explicacion_retorno = (
-            f"El retorno de inversión estimado para su proyecto es de solo {payback_exacto:.1f} años. "
+            f"El retorno de inversión estimado para su proyecto es de solo {texto_payback}. "
             f"Este extraordinario tiempo de recuperación no ocurre de manera aislada, sino como el resultado directo del "
             f"beneficio tributario aplicado por la depreciación acelerada de la planta solar por {años_beneficio} años sumado al ahorro energético acumulado "
             f"de estos mismos años.\n\n"
@@ -1366,7 +1368,7 @@ def generar_pdf():
         )
     else:
         explicacion_retorno = (
-            f"El retorno de inversión estimado para su residencia es de {payback_exacto:.1f} años. "
+            f"El retorno de inversión estimado para su residencia es de {texto_payback}. "
             f"Este resultado es el fruto de la sinergia y acumulación directa del ahorro por la autogeneración de energía. "
             f"Al recuperar su capital, la reducción sustancial de su planilla eléctrica se traducirá en un saldo a favor constante "
             f"dentro de su presupuesto mensual, maximizando la liquidez de su hogar por las próximas décadas."
