@@ -267,6 +267,19 @@ valores_default = {
     "pago_planilla": 149.94,
     "ubicacion_cliente": "",
     "numero_contrato": "",
+    "n_proyecto": "P0000000010",
+    "ciudad_sel": "Guayaquil",
+    "tipo_proyecto": "Residencial",
+    "vendedor": "Ing. Solar",
+    "usar_tiempo_real": True,
+    "pct_autosuficiencia": 95.0,
+    "potencia_manual": 0.0,
+    "potencia_panel_wp": 625.0,
+    "area_panel_m2": 2.74,
+    "deg_y1_pct": 2.0,
+    "atenuacion_pct": 0.55,
+    "anios_beneficio": 2,
+    "modo_manual": False,
 }
 for _clave, _valor in valores_default.items():
     if _clave not in st.session_state:
@@ -330,43 +343,63 @@ if archivo_planilla is not None:
             st.sidebar.success("✅ Datos aplicados — revisa los campos abajo.")
             st.rerun()
 
-# --- SIDEBAR: INFORMACIÓN DEL CLIENTE ---
-st.sidebar.header("📋 Información del Cliente")
-nombre_cliente = st.sidebar.text_input("Nombre del Cliente", key="nombre_cliente")
-n_proyecto = st.sidebar.text_input("Número de Proyecto", "P0000000010")
-numero_contrato = st.sidebar.text_input("N° de Contrato / Cuenta", key="numero_contrato")
-ubicacion_cliente = st.sidebar.text_input("📍 Ubicación / Dirección del Proyecto", key="ubicacion_cliente")
-tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"])
-vendedor = st.sidebar.text_input("Asesor Comercial", "Ing. Solar")
+# --- SIDEBAR: INFORMACIÓN DEL CLIENTE (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.sidebar.header("📋 Información del Cliente")
+    nombre_cliente = st.sidebar.text_input("Nombre del Cliente", key="nombre_cliente")
+    n_proyecto = st.sidebar.text_input("Número de Proyecto", key="n_proyecto")
+    numero_contrato = st.sidebar.text_input("N° de Contrato / Cuenta", key="numero_contrato")
+    ubicacion_cliente = st.sidebar.text_input("📍 Ubicación / Dirección del Proyecto", key="ubicacion_cliente")
+    tipo_proyecto = st.sidebar.selectbox("Tipo de Proyecto", ["Residencial", "Comercial"], key="tipo_proyecto")
+    vendedor = st.sidebar.text_input("Asesor Comercial", key="vendedor")
+else:
+    nombre_cliente = st.session_state.nombre_cliente
+    n_proyecto = st.session_state.n_proyecto
+    numero_contrato = st.session_state.numero_contrato
+    ubicacion_cliente = st.session_state.ubicacion_cliente
+    tipo_proyecto = st.session_state.tipo_proyecto
+    vendedor = st.session_state.vendedor
 
-# --- SIDEBAR: METEOROLOGÍA ---
-st.sidebar.header("🌐 Meteorología")
-usar_tiempo_real = st.sidebar.checkbox("Usar meteorología en tiempo real (NASA POWER)", value=True,
-                                        help="Consulta climatología satelital multi-anual real por coordenadas. Si falla la conexión, se usan valores de referencia locales.")
+# --- SIDEBAR: METEOROLOGÍA (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.sidebar.header("🌐 Meteorología")
+    usar_tiempo_real = st.sidebar.checkbox(
+        "Usar meteorología en tiempo real (NASA POWER)", key="usar_tiempo_real",
+        help="Consulta climatología satelital multi-anual real por coordenadas. Si falla la conexión, se usan valores de referencia locales."
+    )
+else:
+    usar_tiempo_real = st.session_state.usar_tiempo_real
 
-# --- SIDEBAR: PARÁMETROS - HOJA PERFIL DE CONSUMO ---
-st.sidebar.header("⚙️ Parámetros - Hoja Perfil de Consumo")
-pct_autosuficiencia = st.sidebar.slider(
-    "% Autosuficiencia Solar (Cobertura)", min_value=0.0, max_value=100.0, value=95.0, step=0.5,
-    help="Porcentaje del consumo que cubrirá la planta solar. El resto se muestra como aporte de la red."
-)
+# --- SIDEBAR: PARÁMETROS - HOJA PERFIL DE CONSUMO (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.sidebar.header("⚙️ Parámetros - Hoja Perfil de Consumo")
+    pct_autosuficiencia = st.sidebar.slider(
+        "% Autosuficiencia Solar (Cobertura)", min_value=0.0, max_value=100.0, step=0.5, key="pct_autosuficiencia",
+        help="Porcentaje del consumo que cubrirá la planta solar. El resto se muestra como aporte de la red."
+    )
+    potencia_manual = st.sidebar.number_input(
+        "Potencia a Instalar Manual (kWp)", min_value=0.0, step=0.1, key="potencia_manual",
+        help="Déjalo en 0 para usar la potencia sugerida automáticamente calculada. Si ingresas un valor, este sobreescribe la sugerida en todos los cálculos."
+    )
+else:
+    pct_autosuficiencia = st.session_state.pct_autosuficiencia
+    potencia_manual = st.session_state.potencia_manual
 pct_aporte_red = 100.0 - pct_autosuficiencia
 
-potencia_manual = st.sidebar.number_input(
-    "Potencia a Instalar Manual (kWp)", min_value=0.0, value=0.0, step=0.1,
-    help="Déjalo en 0 para usar la potencia sugerida automáticamente calculada. Si ingresas un valor, este sobreescribe la sugerida en todos los cálculos."
-)
-
-# --- SIDEBAR: COMPONENTES DEL SISTEMA (para la tabla de suministro y la propuesta de ahorro) ---
-st.sidebar.header("🔧 Componentes del Sistema")
-potencia_panel_wp = st.sidebar.number_input(
-    "Potencia por Panel (Wp)", min_value=100.0, max_value=1000.0, value=625.0, step=5.0,
-    help="Potencia nominal de un solo panel. Se usa para calcular el número de módulos necesarios."
-)
-area_panel_m2 = st.sidebar.number_input(
-    "Área por Panel (m²)", min_value=1.0, max_value=5.0, value=2.74, step=0.01,
-    help="Área física de un solo panel (típico ~2.6-2.8 m² en paneles grandes de 600+ Wp)."
-)
+# --- SIDEBAR: COMPONENTES DEL SISTEMA (solo en Modo Manual) ---
+if st.session_state.modo_manual:
+    st.sidebar.header("🔧 Componentes del Sistema")
+    potencia_panel_wp = st.sidebar.number_input(
+        "Potencia por Panel (Wp)", min_value=100.0, max_value=1000.0, step=5.0, key="potencia_panel_wp",
+        help="Potencia nominal de un solo panel. Se usa para calcular el número de módulos necesarios."
+    )
+    area_panel_m2 = st.sidebar.number_input(
+        "Área por Panel (m²)", min_value=1.0, max_value=5.0, step=0.01, key="area_panel_m2",
+        help="Área física de un solo panel (típico ~2.6-2.8 m² en paneles grandes de 600+ Wp)."
+    )
+else:
+    potencia_panel_wp = st.session_state.potencia_panel_wp
+    area_panel_m2 = st.session_state.area_panel_m2
 
 # --- SIDEBAR: FOTOS ESPECÍFICAS DEL PROYECTO (editables, distintas para cada cliente) ---
 st.sidebar.header("📷 Fotos de este Proyecto")
@@ -398,57 +431,79 @@ ruta_foto_cubierta_despues_subida = _guardar_temporal(foto_cubierta_despues_subi
 
 st.title("☀️ Sistema de Simulación Fotovoltaica - Latitud Solar")
 
-# --- DIAGNÓSTICO: verificar que la carpeta assets/ esté completa (logo + fotos de portafolio) ---
+col_modo1, col_modo2 = st.columns([4, 1])
+with col_modo2:
+    st.toggle("🔧 Modo Manual", key="modo_manual", help="Muestra todos los controles avanzados para ajustar cada parámetro a mano.")
+
+if not st.session_state.modo_manual:
+    st.caption("Modo simple: sube tu planilla y las fotos del proyecto, y descarga la propuesta ya calculada. Activa el 'Modo Manual' si quieres ajustar los parámetros a mano.")
+
+# --- DIAGNÓSTICO: verificar que la carpeta assets/ esté completa (logo) ---
 _faltantes = [f for f in ARCHIVOS_ASSETS_REQUERIDOS if not os.path.exists(_ruta_activo(f))]
 if _faltantes:
     st.error(
         f"⚠️ Faltan {len(_faltantes)} de {len(ARCHIVOS_ASSETS_REQUERIDOS)} archivos en la carpeta `assets/` "
-        f"(por eso la portada y las páginas de 'Casos de éxito' salen en blanco en el PDF).\n\n"
+        f"(por eso la portada del PDF sale en blanco).\n\n"
         f"Ruta donde se está buscando: `{ASSETS_DIR}`\n\n"
         f"Archivos faltantes: {', '.join(_faltantes)}"
     )
 
 # --- BLOQUE: DATOS HISTÓRICOS DE CONSUMO (determina el consumo mensual sugerido) ---
-st.subheader("📊 Consumo Histórico del Cliente")
-st.caption("Ingresa los meses y consumos reales (ej. de planillas). El promedio se puede usar como Consumo Mensual, que es lo que determina la potencia sugerida de la planta.")
-
 if "tabla_historico" not in st.session_state:
     st.session_state.tabla_historico = pd.DataFrame({
         "Mes": ["Mes 1", "Mes 2", "Mes 3"],
         "Consumo (kWh)": [737.0, 1044.0, 1228.0]
     })
 
-historico_editado = st.data_editor(
-    st.session_state.tabla_historico, num_rows="dynamic", use_container_width=True, key="historico_consumo_editor"
-)
-meses_hist = historico_editado["Mes"].astype(str).tolist()
-valores_hist = pd.to_numeric(historico_editado["Consumo (kWh)"], errors="coerce").fillna(0).tolist()
-suma_hist = sum(valores_hist)
-promedio_hist = suma_hist / len(valores_hist) if valores_hist else 0
+if st.session_state.modo_manual:
+    st.subheader("📊 Consumo Histórico del Cliente")
+    st.caption("Ingresa los meses y consumos reales (ej. de planillas). El promedio se puede usar como Consumo Mensual, que es lo que determina la potencia sugerida de la planta.")
 
-h1, h2, h3 = st.columns([1, 1, 1.4])
-h1.metric("Σ Suma Total Ingresada", f"{suma_hist:,.0f} kWh")
-h2.metric("Promedio Mensual", f"{promedio_hist:,.0f} kWh")
-with h3:
-    st.write("")
-    if st.button("📌 Usar este promedio como Consumo Mensual (kWh/mes)", use_container_width=True):
-        st.session_state.consumo_mensual = round(promedio_hist, 2)
-        st.rerun()
+    historico_editado = st.data_editor(
+        st.session_state.tabla_historico, num_rows="dynamic", use_container_width=True, key="historico_consumo_editor"
+    )
+    meses_hist = historico_editado["Mes"].astype(str).tolist()
+    valores_hist = pd.to_numeric(historico_editado["Consumo (kWh)"], errors="coerce").fillna(0).tolist()
+    suma_hist = sum(valores_hist)
+    promedio_hist = suma_hist / len(valores_hist) if valores_hist else 0
+
+    h1, h2, h3 = st.columns([1, 1, 1.4])
+    h1.metric("Σ Suma Total Ingresada", f"{suma_hist:,.0f} kWh")
+    h2.metric("Promedio Mensual", f"{promedio_hist:,.0f} kWh")
+    with h3:
+        st.write("")
+        if st.button("📌 Usar este promedio como Consumo Mensual (kWh/mes)", use_container_width=True):
+            st.session_state.consumo_mensual = round(promedio_hist, 2)
+            st.rerun()
+else:
+    historico_editado = st.session_state.tabla_historico
+    meses_hist = historico_editado["Mes"].astype(str).tolist()
+    valores_hist = pd.to_numeric(historico_editado["Consumo (kWh)"], errors="coerce").fillna(0).tolist()
+    suma_hist = sum(valores_hist)
+    promedio_hist = suma_hist / len(valores_hist) if valores_hist else 0
 
 # --- BLOQUE 1: PARÁMETROS TÉCNICOS ---
-with st.container():
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        ciudad_sel = st.selectbox("📍 Ubicación", list(ciudades_data.keys()))
-    with col2:
-        consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", key="consumo_mensual")
-    with col3:
-        pago_planilla = st.number_input("💵 Planilla USD/mes", key="pago_planilla")
-        costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
-    with col4:
-        deg_y1 = st.number_input("📉 Deg. Año 1 (%)", value=2.0) / 100
-    with col5:
-        atenuacion = st.number_input("📉 Aten. Anual (%)", value=0.55) / 100
+if st.session_state.modo_manual:
+    with st.container():
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            ciudad_sel = st.selectbox("📍 Ubicación", list(ciudades_data.keys()), key="ciudad_sel")
+        with col2:
+            consumo_mensual = st.number_input("⚡ Consumo (kWh/mes)", key="consumo_mensual")
+        with col3:
+            pago_planilla = st.number_input("💵 Planilla USD/mes", key="pago_planilla")
+            costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
+        with col4:
+            deg_y1 = st.number_input("📉 Deg. Año 1 (%)", key="deg_y1_pct") / 100
+        with col5:
+            atenuacion = st.number_input("📉 Aten. Anual (%)", key="atenuacion_pct") / 100
+else:
+    ciudad_sel = st.session_state.ciudad_sel
+    consumo_mensual = st.session_state.consumo_mensual
+    pago_planilla = st.session_state.pago_planilla
+    costo_kwh = pago_planilla / consumo_mensual if consumo_mensual > 0 else 0
+    deg_y1 = st.session_state.deg_y1_pct / 100
+    atenuacion = st.session_state.atenuacion_pct / 100
 
 # --- OBTENCIÓN DE DATOS METEOROLÓGICOS (NASA POWER en vivo, o respaldo local) ---
 if usar_tiempo_real:
@@ -479,35 +534,43 @@ generacion_y1 = potencia_final * hsp_avg * pr_calculado * 365
 numero_paneles = math.ceil((potencia_final * 1000) / potencia_panel_wp) if potencia_panel_wp > 0 else 0
 area_total_paneles_m2 = numero_paneles * area_panel_m2
 
-with st.expander("🔍 Análisis Meteorológico y Técnico", expanded=True):
-    st.caption(f"Fuente de datos meteorológicos: **{fuente_meteo}**")
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Potencia Sugerida", f"{potencia_sug:.2f} kWp")
-    m2.metric("Potencia Instalada (final)", f"{potencia_final:.2f} kWp",
-               delta="Override manual" if potencia_manual > 0 else None)
-    m3.metric("HSP Promedio", f"{hsp_avg:.2f} h/día")
-    m4.metric("PR (Factor de Corrección)", f"{pr_calculado:.2%}")
-    m5.metric("Costo kWh", f"${costo_kwh:.4f}")
+if "inv_total" not in st.session_state:
+    st.session_state.inv_total = st.session_state.costo_kwp * potencia_final
+
+if st.session_state.modo_manual:
+    with st.expander("🔍 Análisis Meteorológico y Técnico", expanded=True):
+        st.caption(f"Fuente de datos meteorológicos: **{fuente_meteo}**")
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Potencia Sugerida", f"{potencia_sug:.2f} kWp")
+        m2.metric("Potencia Instalada (final)", f"{potencia_final:.2f} kWp",
+                   delta="Override manual" if potencia_manual > 0 else None)
+        m3.metric("HSP Promedio", f"{hsp_avg:.2f} h/día")
+        m4.metric("PR (Factor de Corrección)", f"{pr_calculado:.2%}")
+        m5.metric("Costo kWh", f"${costo_kwh:.4f}")
 
 # --- BLOQUE 2: INVERSIÓN Y AHORRO TRIBUTARIO ---
-st.subheader("💰 Inversión y Beneficios")
 def sync_kwp(): st.session_state.inv_total = st.session_state.costo_kwp * potencia_final
 def sync_inv(): st.session_state.costo_kwp = st.session_state.inv_total / potencia_final if potencia_final > 0 else 0
 
-c_inv1, c_inv2, c_inv3 = st.columns(3)
-with c_inv1:
-    st.number_input("Inversión Total (USD)", key="inv_total", on_change=sync_inv)
-with c_inv2:
-    st.number_input("Costo por kWp (USD)", key="costo_kwp", on_change=sync_kwp)
-with c_inv3:
-    años_beneficio = st.number_input("Años a Aplicar el Beneficio Tributario", min_value=1, max_value=10, value=2, step=1)
+if st.session_state.modo_manual:
+    st.subheader("💰 Inversión y Beneficios")
+    c_inv1, c_inv2, c_inv3 = st.columns(3)
+    with c_inv1:
+        st.number_input("Inversión Total (USD)", key="inv_total", on_change=sync_inv)
+    with c_inv2:
+        st.number_input("Costo por kWp (USD)", key="costo_kwp", on_change=sync_kwp)
+    with c_inv3:
+        años_beneficio = st.number_input("Años a Aplicar el Beneficio Tributario", min_value=1, max_value=10, step=1, key="anios_beneficio")
 
-    if tipo_proyecto == "Comercial":
-        porcentaje_distribucion = 100.0 / años_beneficio
-        st.info(f"Beneficio: **{porcentaje_distribucion:.2f}%** anual de la Inversión Total por {años_beneficio} año(s).")
-    else:
-        porcentaje_distribucion = 0.0
-        st.info("El beneficio tributario aplica únicamente para proyectos Comerciales.")
+        if tipo_proyecto == "Comercial":
+            porcentaje_distribucion = 100.0 / años_beneficio
+            st.info(f"Beneficio: **{porcentaje_distribucion:.2f}%** anual de la Inversión Total por {años_beneficio} año(s).")
+        else:
+            porcentaje_distribucion = 0.0
+            st.info("El beneficio tributario aplica únicamente para proyectos Comerciales.")
+else:
+    años_beneficio = st.session_state.anios_beneficio
+    porcentaje_distribucion = (100.0 / años_beneficio) if tipo_proyecto == "Comercial" else 0.0
 
 # --- BLOQUE 3: FLUJO DE CAJA Y CÁLCULO DE RETORNO ---
 inv_final = st.session_state.inv_total
@@ -543,109 +606,111 @@ for año in range(1, 31):
 energia_total_30_años = sum(producciones_anuales)
 tarifa_nivelada = (inv_final / energia_total_30_años) if energia_total_30_años > 0 else 0
 
-# --- BLOQUE DE MÉTRICAS INDICADORAS ---
-with st.container():
-    st.markdown("### 📊 Análisis de Retorno de Inversión")
-    r1, r2, r3 = st.columns(3)
-
-    ahorro_en_y1 = generacion_y1 * (1 - deg_y1) * costo_kwh
-    benef_trib_y1 = ahorro_trib_anual_usd if tipo_proyecto == "Comercial" else 0
-
-    r1.metric("Ahorro Año 1 (Suma de Ambos)", f"${(ahorro_en_y1 + benef_trib_y1):,.2f}")
-    r2.metric("Inversión a Recuperar", f"${inv_final:,.2f}")
-
-    if payback_exacto:
-        if payback_exacto < 1:
-            meses = round(payback_exacto * 12)
-            texto_retorno = f"{payback_exacto:.2f} años (~ {meses} meses)"
-        else:
-            texto_retorno = f"{payback_exacto:.2f} años"
-    else:
-        texto_retorno = "> 30 años"
-
-    r3.metric("⏱️ Tiempo de Recuperación Real", texto_retorno)
-
-# Tabla en la App
-st.subheader("📊 Tabla de Proyección")
-st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
-
-# --- GRÁFICO MEJORADO ---
-st.subheader("📈 Gráfico de Recuperación de Capital")
-plt.style.use('ggplot')
-fig_app, ax_app = plt.subplots(figsize=(10, 5))
-
+# --- Series usadas también por el PDF (deben calcularse siempre, independientemente del modo) ---
 plot_años = [0] + años
 plot_acumulados = [0] + acumulados
-
 años_ser = pd.Series(plot_años)
 acumulados_ser = pd.Series(plot_acumulados)
 
-ax_app.plot(años_ser, acumulados_ser, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado (Energía + Tributario)')
-ax_app.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Línea de Inversión')
+if st.session_state.modo_manual:
+    # --- BLOQUE DE MÉTRICAS INDICADORAS ---
+    with st.container():
+        st.markdown("### 📊 Análisis de Retorno de Inversión")
+        r1, r2, r3 = st.columns(3)
 
-ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser >= inv_final),
-                interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
-ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser < inv_final),
-                interpolate=True, color='red', alpha=0.1, label='Periodo de Recuperación')
+        ahorro_en_y1 = generacion_y1 * (1 - deg_y1) * costo_kwh
+        benef_trib_y1 = ahorro_trib_anual_usd if tipo_proyecto == "Comercial" else 0
 
-if tipo_proyecto == "Comercial" and años_beneficio > 0:
-    ax_app.axvspan(0, años_beneficio, color='#f1c40f', alpha=0.12,
-                   label=f'Incentivo Tributario Activo ({años_beneficio} añ.)')
+        r1.metric("Ahorro Año 1 (Suma de Ambos)", f"${(ahorro_en_y1 + benef_trib_y1):,.2f}")
+        r2.metric("Inversión a Recuperar", f"${inv_final:,.2f}")
 
-if payback_exacto:
-    ax_app.plot(payback_exacto, inv_final, marker='*', markersize=15, color='#f1c40f', label=f'Punto de Equilibrio: {payback_exacto:.2f} años')
-    ax_app.annotate(f'Retorno: {payback_exacto:.2f} años', xy=(payback_exacto, inv_final), xytext=(payback_exacto, inv_final * 1.15),
-                    fontweight='bold', color='#2c3e50', arrowprops=dict(facecolor='#2c3e50', shrink=0.08, width=1, headwidth=6))
+        if payback_exacto:
+            if payback_exacto < 1:
+                meses = round(payback_exacto * 12)
+                texto_retorno = f"{payback_exacto:.2f} años (~ {meses} meses)"
+            else:
+                texto_retorno = f"{payback_exacto:.2f} años"
+        else:
+            texto_retorno = "> 30 años"
 
-ax_app.set_ylabel("Dólares (USD)")
-ax_app.set_xlabel("Años")
-ax_app.set_xlim(0, 30.5)
-ax_app.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
-ax_app.legend(loc='upper left')
-st.pyplot(fig_app)
+        r3.metric("⏱️ Tiempo de Recuperación Real", texto_retorno)
 
-# --- VISTA PREVIA EN APP: NUEVA HOJA "PERFIL DE CONSUMO ENERGÉTICO" ---
-st.subheader("📄 Vista Previa: Nueva Hoja - Perfil de Consumo Energético")
-pv1, pv2 = st.columns(2)
-with pv1:
-    fig_hist, ax_hist = plt.subplots(figsize=(5, 3.2))
-    colores_barras = ['#95a5a6'] * (len(valores_hist) - 1) + ['#2c3e50'] if valores_hist else []
-    ax_hist.bar(meses_hist, valores_hist, color=colores_barras if colores_barras else '#2c3e50')
-    ax_hist.axhline(y=promedio_hist, color='red', linewidth=1.5)
-    ax_hist.set_ylabel('kWh')
-    ax_hist.set_title('Histórico de Consumo Eléctrico', fontsize=10, fontweight='bold')
-    st.pyplot(fig_hist)
-    st.caption("Análisis del consumo registrado en los últimos periodos.")
-with pv2:
-    fig_dona, ax_dona = plt.subplots(figsize=(5, 3.2))
-    sizes = [pct_autosuficiencia, pct_aporte_red]
-    colors_dona = ['#2ecc71', '#bdc3c7']
-    ax_dona.pie(sizes, colors=colors_dona, startangle=90, counterclock=False, wedgeprops=dict(width=0.35),
-                autopct='%1.0f%%', pctdistance=0.82, textprops={'fontsize': 8, 'fontweight': 'bold', 'color': '#333'})
-    ax_dona.text(0, 0.08, f"{pct_autosuficiencia:.0f}%", ha='center', va='center', fontsize=22, fontweight='bold', color='#27ae60')
-    ax_dona.text(0, -0.18, "AUTOSUFICIENCIA", ha='center', va='center', fontsize=8, color='#555')
-    ax_dona.set_title('Cobertura Energética Proyectada', fontsize=10, fontweight='bold')
-    ax_dona.legend(['Energía Solar', 'Red (CNEL)'], loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=8, frameon=False)
-    st.pyplot(fig_dona)
+    # Tabla en la App
+    st.subheader("📊 Tabla de Proyección")
+    st.dataframe(pd.DataFrame(data_rows), use_container_width=True)
 
-pv3, pv4 = st.columns(2)
-with pv3:
-    fig_tarifa, ax_tarifa = plt.subplots(figsize=(5, 3.2))
-    barras = ax_tarifa.bar(['Red Eléctrica\n(CNEL)', 'Planta Solar\n(Latitud Solar)'], [costo_kwh, tarifa_nivelada], color=['#5d6d7e', '#2ecc71'])
-    for b in barras:
-        ax_tarifa.annotate(f"${b.get_height():.3f}", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
-                            xytext=(0, 4), textcoords="offset points", ha='center', fontweight='bold')
-    ax_tarifa.set_ylabel('Tarifa (USD/kWh)')
-    st.pyplot(fig_tarifa)
-with pv4:
-    st.metric("TARIFA ACTUAL (RED CNEL)", f"${costo_kwh:.3f} / kWh")
-    st.metric("TARIFA NIVELADA (PLANTA SOLAR)", f"${tarifa_nivelada:.3f} / kWh")
+    # --- GRÁFICO MEJORADO ---
+    st.subheader("📈 Gráfico de Recuperación de Capital")
+    plt.style.use('ggplot')
+    fig_app, ax_app = plt.subplots(figsize=(10, 5))
 
-texto_conclusion_preview = (
-    f"Al sustituir el {pct_autosuficiencia:.0f}% de la energía proveniente de la red por generación propia, "
-    f"el costo efectivo de la energía se desploma de forma garantizada durante los próximos 30 años de vida útil del proyecto."
-)
-st.markdown(f"**Conclusión Técnica:** {texto_conclusion_preview}")
+    ax_app.plot(años_ser, acumulados_ser, color='#1f77b4', marker='o', linewidth=2, label='Ahorro Acumulado (Energía + Tributario)')
+    ax_app.axhline(y=inv_final, color='#e74c3c', linestyle='--', linewidth=2, label='Línea de Inversión')
+
+    ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser >= inv_final),
+                    interpolate=True, color='green', alpha=0.2, label='Ganancia Neta')
+    ax_app.fill_between(años_ser, acumulados_ser, inv_final, where=(acumulados_ser < inv_final),
+                    interpolate=True, color='red', alpha=0.1, label='Periodo de Recuperación')
+
+    if tipo_proyecto == "Comercial" and años_beneficio > 0:
+        ax_app.axvspan(0, años_beneficio, color='#f1c40f', alpha=0.12,
+                       label=f'Incentivo Tributario Activo ({años_beneficio} añ.)')
+
+    if payback_exacto:
+        ax_app.plot(payback_exacto, inv_final, marker='*', markersize=15, color='#f1c40f', label=f'Punto de Equilibrio: {payback_exacto:.2f} años')
+        ax_app.annotate(f'Retorno: {payback_exacto:.2f} años', xy=(payback_exacto, inv_final), xytext=(payback_exacto, inv_final * 1.15),
+                        fontweight='bold', color='#2c3e50', arrowprops=dict(facecolor='#2c3e50', shrink=0.08, width=1, headwidth=6))
+
+    ax_app.set_ylabel("Dólares (USD)")
+    ax_app.set_xlabel("Años")
+    ax_app.set_xlim(0, 30.5)
+    ax_app.yaxis.set_major_formatter(mtick.StrMethodFormatter('${x:,.0f}'))
+    ax_app.legend(loc='upper left')
+    st.pyplot(fig_app)
+
+if st.session_state.modo_manual:
+    # --- VISTA PREVIA EN APP: NUEVA HOJA "PERFIL DE CONSUMO ENERGÉTICO" ---
+    st.subheader("📄 Vista Previa: Nueva Hoja - Perfil de Consumo Energético")
+    pv1, pv2 = st.columns(2)
+    with pv1:
+        fig_hist, ax_hist = plt.subplots(figsize=(5, 3.2))
+        colores_barras = ['#95a5a6'] * (len(valores_hist) - 1) + ['#2c3e50'] if valores_hist else []
+        ax_hist.bar(meses_hist, valores_hist, color=colores_barras if colores_barras else '#2c3e50')
+        ax_hist.axhline(y=promedio_hist, color='red', linewidth=1.5)
+        ax_hist.set_ylabel('kWh')
+        ax_hist.set_title('Histórico de Consumo Eléctrico', fontsize=10, fontweight='bold')
+        st.pyplot(fig_hist)
+        st.caption("Análisis del consumo registrado en los últimos periodos.")
+    with pv2:
+        fig_dona, ax_dona = plt.subplots(figsize=(5, 3.2))
+        sizes = [pct_autosuficiencia, pct_aporte_red]
+        colors_dona = ['#2ecc71', '#bdc3c7']
+        ax_dona.pie(sizes, colors=colors_dona, startangle=90, counterclock=False, wedgeprops=dict(width=0.35),
+                    autopct='%1.0f%%', pctdistance=0.82, textprops={'fontsize': 8, 'fontweight': 'bold', 'color': '#333'})
+        ax_dona.text(0, 0.08, f"{pct_autosuficiencia:.0f}%", ha='center', va='center', fontsize=22, fontweight='bold', color='#27ae60')
+        ax_dona.text(0, -0.18, "AUTOSUFICIENCIA", ha='center', va='center', fontsize=8, color='#555')
+        ax_dona.set_title('Cobertura Energética Proyectada', fontsize=10, fontweight='bold')
+        ax_dona.legend(['Energía Solar', 'Red (CNEL)'], loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=8, frameon=False)
+        st.pyplot(fig_dona)
+
+    pv3, pv4 = st.columns(2)
+    with pv3:
+        fig_tarifa, ax_tarifa = plt.subplots(figsize=(5, 3.2))
+        barras = ax_tarifa.bar(['Red Eléctrica\n(CNEL)', 'Planta Solar\n(Latitud Solar)'], [costo_kwh, tarifa_nivelada], color=['#5d6d7e', '#2ecc71'])
+        for b in barras:
+            ax_tarifa.annotate(f"${b.get_height():.3f}", xy=(b.get_x() + b.get_width() / 2, b.get_height()),
+                                xytext=(0, 4), textcoords="offset points", ha='center', fontweight='bold')
+        ax_tarifa.set_ylabel('Tarifa (USD/kWh)')
+        st.pyplot(fig_tarifa)
+    with pv4:
+        st.metric("TARIFA ACTUAL (RED CNEL)", f"${costo_kwh:.3f} / kWh")
+        st.metric("TARIFA NIVELADA (PLANTA SOLAR)", f"${tarifa_nivelada:.3f} / kWh")
+
+    texto_conclusion_preview = (
+        f"Al sustituir el {pct_autosuficiencia:.0f}% de la energía proveniente de la red por generación propia, "
+        f"el costo efectivo de la energía se desploma de forma garantizada durante los próximos 30 años de vida útil del proyecto."
+    )
+    st.markdown(f"**Conclusión Técnica:** {texto_conclusion_preview}")
 
 
 # --- FUNCIONES AUXILIARES DE DISEÑO PARA EL PDF ---
@@ -1306,4 +1371,12 @@ def generar_pdf():
     return bytes(salida_pdf)
 
 
-st.sidebar.download_button("📥 Descargar Propuesta PDF", data=generar_pdf(), file_name=f"Propuesta_{nombre_cliente}.pdf")
+st.divider()
+_pdf_generado = generar_pdf()
+col_desc1, col_desc2, col_desc3 = st.columns([1, 2, 1])
+with col_desc2:
+    st.download_button(
+        "📥 Descargar Propuesta PDF", data=_pdf_generado, file_name=f"Propuesta_{nombre_cliente}.pdf",
+        use_container_width=True, type="primary"
+    )
+st.sidebar.download_button("📥 Descargar Propuesta PDF", data=_pdf_generado, file_name=f"Propuesta_{nombre_cliente}.pdf")
