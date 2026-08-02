@@ -48,14 +48,15 @@ def _imagen_segura(pdf, ruta, x, y, w=None, h=None):
 
 
 class PropuestaPDF(FPDF):
-    """Agrega automáticamente, en TODAS las páginas, el pie de página con contacto y número de hoja."""
+    """Agrega automáticamente, en TODAS las páginas, el pie de página de confidencialidad y número de hoja."""
     def footer(self):
         self.set_y(-15)
-        self.set_font('Arial', '', 8)
-        self.set_text_color(120, 120, 120)
-        self.cell(0, 10, 'LATITUDSOLAR C.LTDA.  |  RUC: 0993403111001  |  Tel: 0969952794 - 0959032257', 0, 0, 'C')
+        self.set_font('Arial', 'I', 8)
+        self.set_text_color(130, 130, 130)
+        self.cell(0, 10, 'Latitud Solar — Propuesta confidencial, de uso exclusivo del destinatario.', 0, 0, 'C')
         self.set_y(-15)
         self.set_x(-25)
+        self.set_font('Arial', '', 8)
         self.cell(10, 10, str(self.page_no()), 0, 0, 'R')
         self.set_text_color(0, 0, 0)
 
@@ -656,7 +657,7 @@ def agregar_encabezado(pdf):
     pdf.set_font('Arial', '', 9)
     pdf.cell(40, 5, '0993403111001', 0, 0, 'L')
     pdf.set_font('Arial', 'B', 9)
-    pdf.cell(25, 5, 'TELEFONOS:', 0, 0, 'R')
+    pdf.cell(25, 5, 'T ELEFONOS:', 0, 0, 'R')
     pdf.set_font('Arial', '', 9)
     pdf.cell(0, 5, '0969952794-0959032257', 0, 1, 'L')
     pdf.ln(8)
@@ -814,8 +815,13 @@ def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_
     if ruta_foto_techo and os.path.exists(ruta_foto_techo):
         ancho_foto = 130
         alto_foto = _alto_imagen_mm(ruta_foto_techo, ancho_foto)
-        pdf.image(ruta_foto_techo, x=(210 - ancho_foto) / 2, y=pdf.get_y(), w=ancho_foto)
-        pdf.set_y(pdf.get_y() + alto_foto + 8)
+        x_foto = (210 - ancho_foto) / 2
+        y_foto = pdf.get_y()
+        pdf.image(ruta_foto_techo, x=x_foto, y=y_foto, w=ancho_foto)
+        pdf.set_draw_color(220, 30, 30)
+        pdf.set_line_width(1)
+        pdf.rect(x_foto, y_foto, ancho_foto, alto_foto)
+        pdf.set_y(y_foto + alto_foto + 8)
     else:
         pdf.ln(11)
 
