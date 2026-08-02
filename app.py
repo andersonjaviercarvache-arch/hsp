@@ -26,10 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 ARCHIVOS_ASSETS_REQUERIDOS = [
-    "logo_icono.png", "logo_portada.png",
-    "foto_p2_a.jpg", "foto_p2_b.png", "foto_p2_c.jpg", "foto_p2_d.png",
-    "foto_p3_a.jpg", "foto_p3_b.png", "foto_p3_c.jpg", "foto_p3_d.png",
-    "foto_p4_a.jpg", "foto_p4_b.png", "foto_p4_c.jpg", "foto_p4_d.png",
+    "logo_portada.png",
 ]
 
 
@@ -48,6 +45,19 @@ def _imagen_segura(pdf, ruta, x, y, w=None, h=None):
             pdf.image(ruta, x=x, y=y)
         return True
     return False
+
+
+class PropuestaPDF(FPDF):
+    """Agrega automáticamente, en TODAS las páginas, el pie de página con contacto y número de hoja."""
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', '', 8)
+        self.set_text_color(120, 120, 120)
+        self.cell(0, 10, 'LATITUDSOLAR C.LTDA.  |  RUC: 0993403111001  |  Tel: 0969952794 - 0959032257', 0, 0, 'C')
+        self.set_y(-15)
+        self.set_x(-25)
+        self.cell(10, 10, str(self.page_no()), 0, 0, 'R')
+        self.set_text_color(0, 0, 0)
 
 # --- 1. BASE DE DATOS DE RESPALDO (usada si NASA POWER no responde) ---
 # HSP: Atlas Solar del Ecuador (CONELEC/CIE, 2008) y estimaciones satelitales NREL/Global Solar Atlas.
@@ -705,8 +715,7 @@ def agregar_pagina_portada(pdf, potencia_kwp):
 
     pdf.set_font('Arial', 'B', 18)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 10, 'PROPUESTA TÉCNICA ECONÓMICA', 0, 1, 'C')
-    pdf.cell(0, 10, f'{potencia_kwp:.0f}KWP', 0, 1, 'C')
+    pdf.cell(0, 10, f'PROPUESTA TÉCNICA ECONÓMICA {potencia_kwp:.0f}KWP', 0, 1, 'C')
 
 
 # --- PÁGINAS: CASOS DE ÉXITO (fijas, siempre las mismas fotos de portafolio) ---
@@ -836,9 +845,16 @@ def agregar_pagina_propuesta_ahorro(pdf, nombre_cliente, potencia_final, numero_
 
     pdf.set_font('Arial', '', 10)
     for i, (parametro, valor) in enumerate(filas):
-        color_fondo = (245, 246, 247) if i % 2 == 0 else (255, 255, 255)
+        es_ahorro_vida_util = parametro == "Ahorro en vida útil"
+        if es_ahorro_vida_util:
+            color_fondo = (163, 219, 190)
+        elif i % 2 == 0:
+            color_fondo = (245, 246, 247)
+        else:
+            color_fondo = (255, 255, 255)
         pdf.set_fill_color(*color_fondo)
-        pdf.set_text_color(90, 90, 90)
+        pdf.set_text_color(50, 50, 50) if es_ahorro_vida_util else pdf.set_text_color(90, 90, 90)
+        pdf.set_font('Arial', 'B', 10) if es_ahorro_vida_util else pdf.set_font('Arial', '', 10)
         pdf.cell(90, 9, parametro, 0, 0, 'L', fill=True)
         pdf.set_text_color(39, 174, 96)
         pdf.set_font('Arial', 'B', 10)
@@ -1120,7 +1136,7 @@ def agregar_pagina_perfil_consumo(pdf):
 
 # --- FUNCIÓN PDF PRINCIPAL ---
 def generar_pdf():
-    pdf = FPDF()
+    pdf = PropuestaPDF()
     pdf.set_margins(15, 15, 15)
 
     ahorro_vida_util = acumulados[-1] if acumulados else 0.0
@@ -1129,33 +1145,28 @@ def generar_pdf():
     # 1. Portada
     agregar_pagina_portada(pdf, potencia_final)
 
-    # 2-4. Casos de éxito (fotos fijas de portafolio)
-    agregar_pagina_casos_exito(pdf, ["foto_p2_a.jpg", "foto_p2_b.png", "foto_p2_c.jpg", "foto_p2_d.png"])
-    agregar_pagina_casos_exito(pdf, ["foto_p3_a.jpg", "foto_p3_b.png", "foto_p3_c.jpg", "foto_p3_d.png"])
-    agregar_pagina_casos_exito(pdf, ["foto_p4_a.jpg", "foto_p4_b.png", "foto_p4_c.jpg", "foto_p4_d.png"])
-
-    # 5. Propuesta de ahorro
+    # 2. Propuesta de ahorro
     agregar_pagina_propuesta_ahorro(
         pdf, nombre_cliente, potencia_final, numero_paneles, potencia_panel_wp,
         area_total_paneles_m2, respaldo_kw, inv_final, ahorro_vida_util, payback_exacto,
         ruta_foto_techo=ruta_foto_ahorro_subida
     )
 
-    # 6. Distribución a cubierta (fotos propias del proyecto, si se subieron)
+    # 3. Distribución a cubierta (fotos propias del proyecto, si se subieron)
     agregar_pagina_distribucion_cubierta(
         pdf, ruta_foto_antes=ruta_foto_cubierta_antes_subida, ruta_foto_despues=ruta_foto_cubierta_despues_subida
     )
 
-    # 7. Perfil de consumo energético
+    # 4. Perfil de consumo energético
     agregar_pagina_perfil_consumo(pdf)
 
-    # 8. Alcance de suministro y componentes
+    # 5. Alcance de suministro y componentes
     agregar_pagina_alcance_suministro(pdf, potencia_final, numero_paneles, potencia_panel_wp)
 
-    # 9. Propuesta solar (datos del proyecto + resumen financiero + tabla técnica detallada + gráfico)
+    # 6. Análisis de Rentabilidad (datos del proyecto + resumen financiero + tabla técnica detallada + gráfico)
     pdf.add_page()
     agregar_encabezado(pdf)
-    agregar_titulo_principal(pdf, f'PROPUESTA SOLAR - {tipo_proyecto.upper()}')
+    agregar_titulo_principal(pdf, 'ANÁLISIS DE RENTABILIDAD')
 
     pdf.set_font('Arial', 'B', 11)
     pdf.cell(0, 8, 'DATOS DEL PROYECTO', 0, 1, 'L')
@@ -1264,9 +1275,6 @@ def generar_pdf():
         os.remove(plot_p)
     except OSError:
         pass
-
-    # 10. Resumen final simplificado (tabla ejecutiva + saldo a favor neto)
-    agregar_pagina_resumen_final(pdf, tipo_proyecto, payback_exacto, ahorro_vida_util, inv_final, data_rows)
 
     salida_pdf = pdf.output(dest='S')
     if isinstance(salida_pdf, str):
